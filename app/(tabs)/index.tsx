@@ -1,5 +1,5 @@
 import { View, Dimensions, FlatList, StyleSheet, Pressable, Image, ListRenderItemInfo, ListRenderItem } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import React, { useEffect, useRef, useState } from 'react';
 import { ThemedText } from '@/components/ThemedText';
 import { Link } from 'expo-router';
@@ -22,6 +22,10 @@ const emojis = [
 ];
 
 export default function FeedScreen() {
+  useEffect(() => {
+    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+  }, []);
+
   const [leaderboardSelected, setLeaderboard] = useState(false);
   const [followingSelected, setFollowing] = useState(true);
   const [spotlightSelected, setSpotlight] = useState(false);
