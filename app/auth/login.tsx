@@ -1,9 +1,9 @@
-import { ThemedTextInput } from "@/components/ThemedTextInput";
-import { ThemedText } from "@/components/ThemedText";
-import { ThemedView } from "@/components/ThemedView";
+import { ThemedTextInput } from "@/components/shared/ThemedTextInput";
+import { ThemedText } from "@/components/shared/ThemedText";
+import { ThemedView } from "@/components/shared/ThemedView";
 import { Link, useNavigation } from "expo-router";
 import { useEffect, useState } from "react";
-import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Divider } from '@rneui/themed';
 import { useRouter } from 'expo-router';
 import {auth} from '@/app/firebaseConfig';
@@ -36,7 +36,8 @@ export default function Login() {
 
       <TouchableOpacity 
         onPress={() => {
-          signInWithEmailAndPassword(auth, email, password)
+          if (email && password) {
+            signInWithEmailAndPassword(auth, email, password)
             .then((userCredential) => {
               // Signed in 
               const user = userCredential.user;
@@ -45,7 +46,14 @@ export default function Login() {
             .catch((error) => {
               const errorCode = error.code;
               const errorMessage = error.message;
+              if (errorCode == "auth/invalid-email") Alert.alert("Invalid Email");
+              if (errorCode == "auth/invalid-credential") Alert.alert("Incorrect Email or Password");
+              if (errorCode == "auth/user-not-found") Alert.alert("User not found");
             });
+          }
+          else{
+            Alert.alert("Cannot leave field empty");
+          }
         }}
         style={{
           backgroundColor: "#3797EF",

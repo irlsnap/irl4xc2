@@ -2,7 +2,6 @@ import { Tabs, useNavigation } from 'expo-router';
 import React, { useEffect } from 'react';
 
 import { MaterialIcons } from '@expo/vector-icons';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Octicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -43,7 +42,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="post"
         options={{
           tabBarIcon: ({ color, focused }) => (
             <MaterialIcons name='add-to-photos' size={24} color={"#fff"} />
@@ -51,10 +50,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="messaging"
+        name="search"
         options={{
           tabBarIcon: ({ color, focused }) => (
-            <MaterialCommunityIcons name='message-processing-outline' size={24} color={"#fff"} />
+            <Octicons name='search' size={24} color={"#fff"} />
           ),
         }}
       />

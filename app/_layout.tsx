@@ -7,7 +7,8 @@ export default function RootLayout() {
       <Stack.Screen name="auth/login" />
       <Stack.Screen name="auth/signup" />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        {/* <Stack.Screen name="root/home" /> */}
+      <Stack.Screen name="misc/friendrequests" options={{ headerShown: false }} />
+      <Stack.Screen name="misc/friends" options={{ headerShown: false }} />
     </Stack>
   );
 }

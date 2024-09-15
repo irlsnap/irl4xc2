@@ -24,6 +24,7 @@ export function ThemedText({
 }: ThemedTextProps) {
   const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
   let [fontsLoaded] = useFonts({
+    'Zoi-Regular': require('@/assets/fonts/Zoi-Regular.otf'),
     AbhayaLibre_400Regular,
     AbhayaLibre_500Medium,
     AbhayaLibre_600SemiBold,
@@ -53,33 +54,39 @@ const styles = StyleSheet.create({
   default: {
     fontSize: 16,
     lineHeight: 24,
-    fontFamily: 'AbhayaLibre_400Regular',
+    // fontFamily: 'AbhayaLibre_400Regular',
+    fontFamily: 'Zoi-Regular',
   },
   defaultSemiBold: {
     fontSize: 16,
     lineHeight: 24,
-    fontFamily: 'AbhayaLibre_600SemiBold',
+    // fontFamily: 'AbhayaLibre_600SemiBold',
+    fontFamily: 'Zoi-Regular',
   },
   title: {
     fontSize: 26,
     textAlign: 'center',
     fontWeight: 'bold',
-    fontFamily: 'AbhayaLibre_700Bold',
+    // fontFamily: 'AbhayaLibre_700Bold',
+    fontFamily: 'Zoi-Regular',
   },
   subtitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    fontFamily: 'AbhayaLibre_700Bold',
+    // fontFamily: 'AbhayaLibre_700Bold',
+    fontFamily: 'Zoi-Regular',
   },
   link: {
     lineHeight: 30,
     fontSize: 16,
     color: '#3797EF',
-    fontFamily: 'AbhayaLibre_400Regular',
+    // fontFamily: 'AbhayaLibre_400Regular',
+    fontFamily: 'Zoi-Regular',
   },
   grayed: {
     fontSize: 16,
     color: '#414141',
-    fontFamily: 'AbhayaLibre_400Regular',
+    // fontFamily: 'AbhayaLibre_400Regular',
+    fontFamily: 'Zoi-Regular',
   }
 });

@@ -1,9 +1,10 @@
-import { View, Dimensions, FlatList, StyleSheet, Pressable, Image, ListRenderItemInfo, ListRenderItem } from 'react-native';
+import { View, Dimensions, FlatList, StyleSheet, Pressable, Image } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import React, { useEffect, useRef, useState } from 'react';
-import { ThemedText } from '@/components/ThemedText';
+import { ThemedText } from '@/components/shared/ThemedText';
 import { Link } from 'expo-router';
 import Carousel from 'react-native-reanimated-carousel';
+import ComingSoonPage from '../misc/comingsoon';
 
 const videos = [
   "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
@@ -96,7 +97,8 @@ export default function FeedScreen() {
         <ThemedText type="defaultSemiBold">spotlight</ThemedText>
       </Link>
       
-      <FlatList
+      {followingSelected ? 
+        <FlatList
         data={videos}
         renderItem={({ item, index }) => (
           <Item item={item} shouldPlay={index === currentViewableItemIndex} />
@@ -106,7 +108,9 @@ export default function FeedScreen() {
         horizontal={false}
         showsVerticalScrollIndicator={false}
         viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
-      />
+      /> : <ComingSoonPage/>
+      }
+      
       </View>
     );
   }
@@ -133,7 +137,7 @@ const Item = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => {
 
       <Pressable onPress={() => status.isPlaying ? video.current?.pauseAsync() : video.current?.playAsync()}>
 
-      <View style={{ flex: 1, position: 'absolute', zIndex: 4, bottom: 0 }}>
+      <View style={{ flex: 1, position: 'absolute', zIndex: 4, bottom: 0, marginLeft: "5%", marginBottom: "3%" }}>
             <Carousel
                 snapEnabled
                 // loop
@@ -189,6 +193,7 @@ const RealMoji = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => 
           flex: 1,
           borderWidth: 1,
           justifyContent: 'center',
+          borderRadius: 5,
       }}
     >
       <Pressable onPress={() => emojisStatus.isPlaying ? emoji.current?.pauseAsync() : emoji.current?.playAsync()}>
@@ -222,7 +227,6 @@ const styles = StyleSheet.create({
   videoContainer: {
     width: Dimensions.get('window').width,
     height: Dimensions.get('window').height-75,
-
   },
   video: {
     width: '100%',

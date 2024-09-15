@@ -24,7 +24,7 @@ export function ThemedButton({
     <TouchableOpacity style={{
         backgroundColor: "#fff"
     }}>
-        <ThemedText>Hello</ThemedText>
+        <ThemedText>{text}</ThemedText>
     </TouchableOpacity>
   );
 }

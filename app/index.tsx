@@ -1,17 +1,17 @@
-import { Link } from "expo-router";
-import { Text, View } from "react-native";
+import { router } from "expo-router";
+import Login from "./auth/login";
+import { auth } from "./firebaseConfig";
+import { useEffect } from "react";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function Index() {
+  useEffect(() => {
+    onAuthStateChanged(auth, async (user) => {
+      if (user) router.replace("/(tabs)/")
+    });
+  }, []);
+
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-      }}
-    >
-      <Text>Edit app/index.tsx to edit this screen.</Text>
-      <Link href={"/auth/login"}>hello</Link>
-    </View>
+    <Login/>
   );
 }
