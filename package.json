@@ -33,11 +33,13 @@
     "expo-camera": "~15.0.15",
     "expo-constants": "~16.0.2",
     "expo-dev-client": "~4.0.26",
+    "expo-device": "^6.0.2",
     "expo-font": "~12.0.9",
     "expo-image": "~1.12.15",
     "expo-image-picker": "~15.0.7",
     "expo-linking": "~6.3.1",
     "expo-media-library": "~16.0.5",
+    "expo-notifications": "~0.28.16",
     "expo-router": "~3.5.23",
     "expo-sharing": "~12.0.1",
     "expo-splash-screen": "~0.27.5",
@@ -45,6 +47,7 @@
     "expo-symbols": "~0.1.5",
     "expo-system-ui": "~3.0.7",
     "expo-video": "^1.2.5",
+    "expo-video-thumbnails": "~8.0.0",
     "expo-web-browser": "~13.0.3",
     "firebase": "^10.13.1",
     "react": "18.2.0",
@@ -59,8 +62,7 @@
     "react-native-svg": "15.2.0",
     "react-native-vector-icons": "^10.1.0",
     "react-native-vision-camera": "^4.5.2",
-    "react-native-web": "~0.19.10",
-    "expo-video-thumbnails": "~8.0.0"
+    "react-native-web": "~0.19.10"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

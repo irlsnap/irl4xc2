@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import {auth, db} from '@/app/firebaseConfig';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { collection, doc, getDocs, query, setDoc, where } from "firebase/firestore";
+import registerForPushNotificationsAsync from "../notifs";
 
 export default function Signup() {
   const router = useRouter();
@@ -72,6 +73,7 @@ export default function Signup() {
                       friends: {}
                     };
                     await setDoc(doc(db, "users", user.uid), data);
+                    await registerForPushNotificationsAsync()
                     router.navigate("/(tabs)/");
                 })
                 .catch((error) => {

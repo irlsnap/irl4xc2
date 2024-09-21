@@ -8,6 +8,7 @@ import { Divider } from '@rneui/themed';
 import { useRouter } from 'expo-router';
 import {auth} from '@/app/firebaseConfig';
 import { signInWithEmailAndPassword } from "firebase/auth";
+import registerForPushNotificationsAsync from "../notifs";
 
 export default function Login() {
   const router = useRouter();
@@ -38,8 +39,9 @@ export default function Login() {
         onPress={() => {
           if (email && password) {
             signInWithEmailAndPassword(auth, email, password)
-            .then((userCredential) => {
+            .then(async (userCredential) => {
               // Signed in 
+              await registerForPushNotificationsAsync();
               const user = userCredential.user;
               router.navigate("/(tabs)/")
             })

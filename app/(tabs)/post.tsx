@@ -206,10 +206,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    marginLeft: '2%',
+    marginTop: '3%'
   },
   stepContainer: {
     gap: 8,
     marginBottom: 8,
+    marginLeft: '2%',
   },
   reactLogo: {
     height: 178,

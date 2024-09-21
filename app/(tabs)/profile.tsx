@@ -3,7 +3,7 @@ import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList } from "reac
 import * as ImagePicker from 'expo-image-picker'; 
 import { auth, db, storage } from "../firebaseConfig";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { ThemedText } from "@/components/shared/ThemedText";
 import { ThemedView } from "@/components/shared/ThemedView";
 import VideoViewComponent from "@/components/video/ProfileVideoView";
@@ -11,6 +11,7 @@ import { router, useNavigation } from "expo-router";
 import VideoThumbnailComponent from "@/components/video/VideoThumbnailComponent";
 import { ThemedButton } from "@/components/shared/ThemedButton";
 import { signOut } from "firebase/auth";
+import * as Notifications from 'expo-notifications';
 
 export default function Profile() {
   const navigation = useNavigation();
@@ -68,6 +69,32 @@ export default function Profile() {
     });
 
     Alert.alert('Photo Uploaded!');
+  };
+
+  // Function to get all push tokens from Firestore
+  const getAllUserTokens = async (): Promise<string[]> => {
+    try {
+      const allUserTokens: string[] = [];
+      
+      // Reference to the 'users' collection
+      const usersRef = collection(db, 'users');
+      
+      // Get all documents in the 'users' collection
+      const userSnapshot = await getDocs(usersRef);
+      
+      // Loop through each document and extract the push token
+      userSnapshot.forEach((doc) => {
+        const userData = doc.data();
+        if (userData.pushToken) {
+          allUserTokens.push(userData.pushToken);
+        }
+      });
+
+      return allUserTokens; // Return an array of push tokens
+    } catch (error) {
+      console.error("Error fetching user tokens: ", error);
+      return [];
+    }
   };
 
   // Render item for FlatList
@@ -130,6 +157,66 @@ export default function Profile() {
         }}>
           <ThemedText style={{marginLeft:"8%"}}>Sign Out</ThemedText>
         </TouchableOpacity>
+        {email == 'n@ucsc.edu' ?
+      <TouchableOpacity 
+      onPress={async () => {
+        const currentDate = new Date();
+        const formattedDate = currentDate.toLocaleDateString(); // Format the current date
+
+        try {
+          // Step 1: Check if a notification has already been sent today
+          const timeRef = collection(db, 'time');
+          const querySnapshot = await getDocs(query(timeRef, where('date', '==', formattedDate)));
+
+          if (!querySnapshot.empty) {
+            // If a notification for today exists, show an alert
+            alert('A notification has already been sent for today.');
+            return; // Exit the function, preventing further actions
+          }
+
+          // Step 2: Fetch all user tokens
+          const allUserTokens = await getAllUserTokens();
+          console.log(allUserTokens);
+
+          // Step 3: Send a notification to all users
+          const message = {
+            to: allUserTokens,
+            sound: 'default',
+            title: '⚠️ Time to IRL ⚠️',
+            body: 'You have two minutes to capture a video and share with your friends!',
+            data: { someData: 'Time to IRL' },
+          };
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "⚠️ Time to IRL ⚠️",
+              body: 'You have two minutes to capture a video and share with your friends!',
+              data: { data: 'goes here', test: { test1: 'more data' } },
+            },
+            trigger: { seconds: 1 },
+          });
+
+          // Step 4: Add a document to Firestore in the 'time' collection with the date and time
+          await addDoc(collection(db, 'time'), {
+            date: formattedDate, // Store today's date
+            time: currentDate.toLocaleTimeString(), // Store current time
+          });
+
+          console.log('Notification sent and Firestore updated!');
+        } catch (error) {
+          console.error('Error sending notification or updating Firestore:', error);
+        }
+      }}                    
+      style={{
+        backgroundColor: "#3797EF",
+        padding: 10,
+        width: "40%",
+        borderRadius: 6,
+        marginVertical: "5%",
+        marginLeft: "30%"
+      }}>
+        <ThemedText style={{marginLeft:"13%"}}>Send Notification</ThemedText>
+      </TouchableOpacity> : null}
     </ThemedView>
   );
 }
