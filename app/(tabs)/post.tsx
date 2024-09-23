@@ -22,6 +22,7 @@ import { router } from "expo-router";
 import { useFirstTimeCamera } from "@/hooks/useFirstTimeCamera";
 import { useIsFocused } from "@react-navigation/native";
 import { useAppState } from "@react-native-community/hooks";
+import { requestMediaLibraryPermissionsAsync } from "expo-image-picker";
 
 export default function Post() {
   const { isFirstTime, isLoading } = useFirstTimeCamera();
@@ -84,6 +85,12 @@ export default function Post() {
     const microphoneStatus = await Camera.requestMicrophonePermission();
     if (microphoneStatus == "denied") {
       Alert.alert("Error", "Microphone permission is required.");
+      return false;
+    }
+
+    const mediaLibraryStatus = await requestMediaLibraryPermissionsAsync();
+    if (!mediaLibraryStatus.granted) {
+      Alert.alert("Error", "Media Library permission is required.");
       return false;
     }
 

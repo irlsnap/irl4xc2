@@ -3,7 +3,7 @@ import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList } from "reac
 import * as ImagePicker from 'expo-image-picker'; 
 import { auth, db, storage } from "../firebaseConfig";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, where, writeBatch } from "firebase/firestore";
 import { ThemedText } from "@/components/shared/ThemedText";
 import { ThemedView } from "@/components/shared/ThemedView";
 import VideoViewComponent from "@/components/video/ProfileVideoView";
@@ -162,23 +162,36 @@ export default function Profile() {
       onPress={async () => {
         const currentDate = new Date();
         const formattedDate = currentDate.toLocaleDateString(); // Format the current date
-
+    
         try {
-          // Step 1: Check if a notification has already been sent today
+          // Step 1: Empty the "post" field for all users
+          const usersRef = collection(db, 'users');
+          const usersSnapshot = await getDocs(usersRef);
+    
+          const batch = writeBatch(db); // Use Firestore batch to perform multiple writes efficiently
+    
+          usersSnapshot.forEach((doc) => {
+            batch.update(doc.ref, { post: '' }); // Set the "post" field to an empty string
+          });
+    
+          await batch.commit(); // Commit the batch operation
+          console.log('All users\' "post" fields have been cleared.');
+    
+          // Step 2: Check if a notification has already been sent today
           const timeRef = collection(db, 'time');
           const querySnapshot = await getDocs(query(timeRef, where('date', '==', formattedDate)));
-
+    
           if (!querySnapshot.empty) {
             // If a notification for today exists, show an alert
             alert('A notification has already been sent for today.');
             return; // Exit the function, preventing further actions
           }
-
-          // Step 2: Fetch all user tokens
+    
+          // Step 3: Fetch all user tokens
           const allUserTokens = await getAllUserTokens();
           console.log(allUserTokens);
-
-          // Step 3: Send a notification to all users
+    
+          // Step 4: Send a notification to all users
           const message = {
             to: allUserTokens,
             sound: 'default',
@@ -186,7 +199,7 @@ export default function Profile() {
             body: 'You have two minutes to capture a video and share with your friends!',
             data: { someData: 'Time to IRL' },
           };
-
+    
           await Notifications.scheduleNotificationAsync({
             content: {
               title: "⚠️ Time to IRL ⚠️",
@@ -195,13 +208,13 @@ export default function Profile() {
             },
             trigger: { seconds: 1 },
           });
-
-          // Step 4: Add a document to Firestore in the 'time' collection with the date and time
+    
+          // Step 5: Add a document to Firestore in the 'time' collection with the date and time
           await addDoc(collection(db, 'time'), {
             date: formattedDate, // Store today's date
             time: currentDate.toLocaleTimeString(), // Store current time
           });
-
+    
           console.log('Notification sent and Firestore updated!');
         } catch (error) {
           console.error('Error sending notification or updating Firestore:', error);
@@ -215,8 +228,8 @@ export default function Profile() {
         marginVertical: "5%",
         marginLeft: "30%"
       }}>
-        <ThemedText style={{marginLeft:"13%"}}>Send Notification</ThemedText>
-      </TouchableOpacity> : null}
+      <ThemedText style={{marginLeft:"13%"}}>Send Notification</ThemedText>
+    </TouchableOpacity> : null}
     </ThemedView>
   );
 }

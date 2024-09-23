@@ -1,18 +1,11 @@
 import { View, Dimensions, FlatList, StyleSheet, Pressable, Image } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import React, { useEffect, useRef, useState } from 'react';
-import { ThemedText } from '@/components/shared/ThemedText';
-import { Link } from 'expo-router';
 import Carousel from 'react-native-reanimated-carousel';
 import ComingSoonPage from '../misc/comingsoon';
-
-const videos = [
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-];
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../firebaseConfig';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 
 const emojis = [
   "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
@@ -22,14 +15,78 @@ const emojis = [
   "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
 ];
 
-export default function FeedScreen() {
+
+const Tab = createMaterialTopTabNavigator();
+
+export default function MyTabs() {
+  return (
+    <Tab.Navigator
+      initialRouteName='friends'
+      screenOptions={{
+        tabBarActiveTintColor: '#fff',
+        tabBarIndicatorStyle: {backgroundColor: '#fff'},
+        tabBarIndicatorContainerStyle: {width: '70%', left: '5%'},
+        tabBarLabelStyle: { fontSize: 16,
+          lineHeight: 24,
+          fontFamily: 'Zoi-Regular', },
+        tabBarStyle: { 
+          backgroundColor: 'transparent',
+          borderTopWidth: 0,
+          position: 'absolute',
+          // left: '%',
+          top: '11%',
+          height: '5%',
+          width: '100%'
+        },
+      }}>
+      <Tab.Screen name="leaderboard" component={ComingSoonPage} />
+      <Tab.Screen name="friends" component={FeedScreen} />
+      <Tab.Screen name="spotlight" component={ComingSoonPage} />
+    </Tab.Navigator>
+  );
+}
+
+function FeedScreen() {
   useEffect(() => {
     Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+    fetchFriendVideos(); // Fetch the videos of friends when component mounts
   }, []);
 
-  const [leaderboardSelected, setLeaderboard] = useState(false);
-  const [followingSelected, setFollowing] = useState(true);
-  const [spotlightSelected, setSpotlight] = useState(false);
+  const fetchFriendVideos = async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    try {
+      // Query Firestore to get the current user's friends
+      const userDoc = doc(db, 'users', currentUser.uid);
+      const userSnapshot = await getDoc(userDoc);
+      const friends = userSnapshot.data()?.friends || {}; // Retrieve the friends map
+
+      // Filter out friends and fetch their posts
+      const friendUIDs = Object.keys(friends).filter((uid) => friends[uid] === true);
+
+      if (friendUIDs.length > 0) {
+        const videoUrls: string[] = [];
+
+        // Fetch posts (videos) from each friend
+        for (const uid of friendUIDs) {
+          const friendDoc = doc(db, 'users', uid);
+          const friendSnapshot = await getDoc(friendDoc);
+
+          const friendPosts = friendSnapshot.data()?.post || '';
+          if (friendPosts) {
+            videoUrls.push(friendPosts); // Assuming 'post' is a video URL
+          }
+        }
+
+        setVideos(videoUrls); // Update state with video URLs
+      }
+    } catch (error) {
+      console.error('Error fetching friend videos:', error);
+    }
+  };
+
+  const [videos, setVideos] = useState<string[]>([]);
 
   const [currentViewableItemIndex, setCurrentViewableItemIndex] = useState(0);
   const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 }
@@ -45,59 +102,8 @@ export default function FeedScreen() {
         source={require('@/assets/images/app_logo_transparent.png')}
         style={styles.logo}
       />
-
-      <Link 
-        onPress={() => {
-          setLeaderboard(true);
-          setFollowing(false);
-          setSpotlight(false);
-        }}
-        href={"/(tabs)/"} 
-        style={{
-          position: 'absolute',
-          top: "13%",
-          left: "10%",
-          zIndex: 2,
-          textDecorationLine: leaderboardSelected ? "underline" : "none"
-      }}>
-        <ThemedText type="defaultSemiBold">leaderboard</ThemedText>
-      </Link>
-
-      <Link 
-        onPress={() => {
-          setLeaderboard(false);
-          setFollowing(true);
-          setSpotlight(false);
-        }}
-        href={"/(tabs)/"} 
-        style={{
-          position: 'absolute',
-          top: "13%",
-          left: "42%",
-          zIndex: 2,
-          textDecorationLine: followingSelected ? "underline" : "none"
-      }}>
-        <ThemedText type="defaultSemiBold">following</ThemedText>
-      </Link>
-
-      <Link 
-        onPress={() => {
-          setLeaderboard(false);
-          setFollowing(false);
-          setSpotlight(true);
-        }}
-        href={"/(tabs)/"} 
-        style={{
-          position: 'absolute',
-          top: "13%",
-          left: "70%",
-          zIndex: 2,
-          textDecorationLine: spotlightSelected ? "underline" : "none"
-      }}>
-        <ThemedText type="defaultSemiBold">spotlight</ThemedText>
-      </Link>
       
-      {followingSelected ? 
+      {videos ? 
         <FlatList
         data={videos}
         renderItem={({ item, index }) => (
@@ -108,7 +114,7 @@ export default function FeedScreen() {
         horizontal={false}
         showsVerticalScrollIndicator={false}
         viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
-      /> : <ComingSoonPage/>
+      /> : <ComingSoonPage text='No Posts yet. Add more friends!'/>
       }
       
       </View>
@@ -140,7 +146,7 @@ const Item = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => {
       <View style={{ flex: 1, position: 'absolute', zIndex: 4, bottom: 0, marginLeft: "5%", marginBottom: "3%" }}>
             <Carousel
                 snapEnabled
-                // loop
+                loop
                 width={width/4}
                 height={width/2}
                 // autoPlay={true}

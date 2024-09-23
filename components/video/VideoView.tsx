@@ -52,25 +52,37 @@ export default function VideoViewComponent({ video, setVideo }: VideoViewProps) 
     const storageRef = ref(storage, "videos/"+docRef.id);
     const uploadTask = uploadBytesResumable(storageRef, blob);
 
-    // listen for events
+    // Listen for upload events
     uploadTask.on(
       "state_changed",
       (snapshot) => {
-        const progress =
-          (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
         console.log("Upload is " + progress + "% done");
-        setProgress(progress);
+        setProgress(progress); // Update the progress in state
       },
       (error) => {
-        // handle error
+        // Handle any error that occurs during upload
+        console.error("Upload failed", error);
       },
-      () => {
-        getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+      async () => {
+        // On successful upload
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
           console.log("File available at", downloadURL);
-          // save record
-          await updateDoc(doc(db, "users", uid), {videos: arrayUnion(downloadURL)});
+
+          // Save the video URL to the 'videos' field as an array and the 'post' field as a string
+          await updateDoc(doc(db, "users", uid), {
+            videos: arrayUnion(downloadURL), // Add to 'videos' field (array)
+            post: downloadURL,               // Set 'post' field as a string
+          });
+
+          // Clear the video input state after the upload
           setVideo("");
-        });
+
+          console.log("Video URL saved to both 'videos' and 'post' fields");
+        } catch (error) {
+          console.error("Error saving video URL to Firestore:", error);
+        }
       }
     );
   }
