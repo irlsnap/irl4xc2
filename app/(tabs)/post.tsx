@@ -23,6 +23,9 @@ import { useFirstTimeCamera } from "@/hooks/useFirstTimeCamera";
 import { useIsFocused } from "@react-navigation/native";
 import { useAppState } from "@react-native-community/hooks";
 import { requestMediaLibraryPermissionsAsync } from "expo-image-picker";
+import { doc, getDoc } from "firebase/firestore";  // Firestore imports
+import { auth, db } from '../firebaseConfig';
+import ComingSoonPage from '../misc/comingsoon';
 
 export default function Post() {
   const { isFirstTime, isLoading } = useFirstTimeCamera();
@@ -36,7 +39,7 @@ export default function Post() {
   );
   const [isRecording, setIsRecording] = React.useState<boolean>(false);
   const [video, setVideo] = React.useState<string>("");
-
+  const [hasPostedToday, setHasPostedToday] = React.useState<boolean>(false); // Track if user has posted today
 
   const device = useCameraDevice(cameraFacing, 
     {
@@ -44,12 +47,37 @@ export default function Post() {
       'ultra-wide-angle-camera'
     ]}
   );
-  
-  const onFlipCameraPressed = useCallback(() => {
-    setCameraFacing((p) => (p === 'back' ? 'front' : 'back'))
-  }, [])
 
-  React.useEffect(() => {
+  // Fetch the user's post status
+  const checkIfPostedToday = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+
+    try {
+      const userDoc = doc(db, 'users', currentUser.uid);
+      const userSnapshot = await getDoc(userDoc);
+      const post = userSnapshot.data()?.post || '';
+
+      // If the 'post' field is not an empty string, it means the user has already posted today
+      if (post) {
+        setHasPostedToday(true);
+      } else {
+        setHasPostedToday(false);
+      }
+    } catch (error) {
+      console.error("Error fetching user post data:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkIfPostedToday();
+  }, [checkIfPostedToday]);
+
+  const onFlipCameraPressed = useCallback(() => {
+    setCameraFacing((p) => (p === 'back' ? 'front' : 'back'));
+  }, []);
+
+  useEffect(() => {
     async function checkPermissions() {
       const cameraPermission = Camera.getCameraPermissionStatus();
       if (cameraPermission == "denied") {
@@ -164,14 +192,20 @@ export default function Post() {
     } else {
       setIsRecording(true);
       const video = cameraRef.current?.startRecording({
-        onRecordingFinished: (video) => {setVideo(video.path); console.log(video.path)},
+        onRecordingFinished: (video) => { setVideo(video.path); console.log(video.path); },
         onRecordingError: (error) => console.error(error),
       });
     }
   }
 
+  // Show ComingSoonPage if the user has posted today
+  if (hasPostedToday) {
+    return <ComingSoonPage text="You've already posted today. Come back tmrw to post again!" />;
+  }
+
   if (device == null) return <></>;
   if (video) return <VideoViewComponent video={video} setVideo={setVideo} />;
+  
   return (
     <View style={{ flex: 1 }}>
       <Camera
@@ -191,9 +225,7 @@ export default function Post() {
       />
       <CameraButton 
         isRecording={isRecording}
-        handleTakePicture={
-          toggleRecord
-        }
+        handleTakePicture={toggleRecord}
         cameraMode={"video"}
       />
     </View>
@@ -214,7 +246,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     marginLeft: '2%',
-    marginTop: '3%'
+    marginTop: '3%',
   },
   stepContainer: {
     gap: 8,

@@ -1,4 +1,4 @@
-import { View, Dimensions, FlatList, StyleSheet, Pressable, Image } from 'react-native';
+import { View, Dimensions, FlatList, StyleSheet, Pressable, Image, Text } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import React, { useEffect, useRef, useState } from 'react';
 import Carousel from 'react-native-reanimated-carousel';
@@ -15,7 +15,6 @@ const emojis = [
   "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
 ];
 
-
 const Tab = createMaterialTopTabNavigator();
 
 export default function MyTabs() {
@@ -24,16 +23,13 @@ export default function MyTabs() {
       initialRouteName='friends'
       screenOptions={{
         tabBarActiveTintColor: '#fff',
-        tabBarIndicatorStyle: {backgroundColor: '#fff'},
-        tabBarIndicatorContainerStyle: {width: '70%', left: '5%'},
-        tabBarLabelStyle: { fontSize: 16,
-          lineHeight: 24,
-          fontFamily: 'Zoi-Regular', },
-        tabBarStyle: { 
+        tabBarIndicatorStyle: { backgroundColor: '#fff' },
+        tabBarIndicatorContainerStyle: { width: '70%', left: '5%' },
+        tabBarLabelStyle: { fontSize: 16, lineHeight: 24, fontFamily: 'Zoi-Regular' },
+        tabBarStyle: {
           backgroundColor: 'transparent',
           borderTopWidth: 0,
           position: 'absolute',
-          // left: '%',
           top: '11%',
           height: '5%',
           width: '100%'
@@ -66,27 +62,30 @@ function FeedScreen() {
       const friendUIDs = Object.keys(friends).filter((uid) => friends[uid] === true);
 
       if (friendUIDs.length > 0) {
-        const videoUrls: string[] = [];
+        const friendData: { uid: string; post: string; name: string; pfp: string }[] = [];
 
-        // Fetch posts (videos) from each friend
+        // Fetch posts (videos) from each friend along with name and pfp
         for (const uid of friendUIDs) {
           const friendDoc = doc(db, 'users', uid);
           const friendSnapshot = await getDoc(friendDoc);
 
           const friendPosts = friendSnapshot.data()?.post || '';
+          const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown'; // Fallback to "Unknown" if name is not present
+          const friendPfp = friendSnapshot.data()?.pfp || ''; // Fallback to empty string if no pfp is set
+
           if (friendPosts) {
-            videoUrls.push(friendPosts); // Assuming 'post' is a video URL
+            friendData.push({ uid, post: friendPosts, name: friendName, pfp: friendPfp });
           }
         }
 
-        setVideos(videoUrls); // Update state with video URLs
+        setVideos(friendData); // Update state with friend data (video, name, pfp)
       }
     } catch (error) {
       console.error('Error fetching friend videos:', error);
     }
   };
 
-  const [videos, setVideos] = useState<string[]>([]);
+  const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string }[]>([]);
 
   const [currentViewableItemIndex, setCurrentViewableItemIndex] = useState(0);
   const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 }
@@ -103,13 +102,13 @@ function FeedScreen() {
         style={styles.logo}
       />
       
-      {videos ? 
+      {videos.length > 0 ? 
         <FlatList
         data={videos}
         renderItem={({ item, index }) => (
           <Item item={item} shouldPlay={index === currentViewableItemIndex} />
         )}
-        keyExtractor={item => item}
+        keyExtractor={item => item.uid}
         pagingEnabled
         horizontal={false}
         showsVerticalScrollIndicator={false}
@@ -121,7 +120,7 @@ function FeedScreen() {
     );
   }
 
-const Item = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => {
+const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string; name: string; pfp: string } }) => {
   const video = React.useRef<Video | null>(null);
   const width = Dimensions.get('window').width;
   const [status, setStatus] = useState<any>(null);
@@ -140,43 +139,52 @@ const Item = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => {
 
   return (
     <View>
-
       <Pressable onPress={() => status.isPlaying ? video.current?.pauseAsync() : video.current?.playAsync()}>
 
-      <View style={{ flex: 1, position: 'absolute', zIndex: 4, bottom: 0, marginLeft: "5%", marginBottom: "3%" }}>
-            <Carousel
-                snapEnabled
-                loop
-                width={width/4}
-                height={width/2}
-                // autoPlay={true}
-                // data={[...new Array(6).keys()]}
-                data={emojis}
-                scrollAnimationDuration={500}
-                onSnapToItem={(index) => setCurrentViewableMojiIndex(index)}
-                renderItem={({ item, index }) => (
-                  <RealMoji item={item} shouldPlay={index === currentViewableMojiIndex} />
-                )}
-            />
+        <View style={{ flex: 1, position: 'absolute', zIndex: 4, bottom: 0, marginLeft: "5%", marginBottom: "3%" }}>
+          <Carousel
+            snapEnabled
+            loop
+            width={width / 4}
+            height={width / 2}
+            scrollAnimationDuration={500}
+            onSnapToItem={(index) => setCurrentViewableMojiIndex(index)}
+            data={emojis}
+            renderItem={({ item, index }) => (
+              <RealMoji item={item} shouldPlay={index === currentViewableMojiIndex} />
+            )}
+          />
         </View>
-        
+
         <View style={styles.videoContainer}>
-          <Video 
+          <Video
             ref={video}
-            source={{ uri: item }}
+            source={{ uri: item.post }}
             style={styles.video}
             isLooping
             resizeMode={ResizeMode.COVER}
             useNativeControls={false}
             onPlaybackStatusUpdate={status => setStatus(() => status)}
           />
+
+          {/* Profile Picture and Name */}
+          <View style={styles.profileContainer}>
+            {item.pfp ? (
+              <Image source={{ uri: item.pfp }} style={styles.profileImage} />
+            ) : (
+              <View style={styles.defaultProfileIcon}>
+                <Text style={styles.defaultProfileText}>👤</Text>
+              </View>
+            )}
+            <Text style={styles.profileName}>{item.name}</Text>
+          </View>
         </View>
       </Pressable>
     </View>
   );
 }
 
-const RealMoji = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => {
+const RealMoji = ({ item, shouldPlay }: { shouldPlay: boolean; item: string }) => {
   const emoji = React.useRef<Video | null>(null);
 
   const [emojisStatus, setEmojisStatus] = useState<any>(null);
@@ -196,23 +204,22 @@ const RealMoji = ({ item, shouldPlay }: {shouldPlay: boolean; item: string}) => 
   return (
     <View
       style={{
-          flex: 1,
-          borderWidth: 1,
-          justifyContent: 'center',
-          borderRadius: 5,
+        flex: 1,
+        borderWidth: 1,
+        justifyContent: 'center',
+        borderRadius: 5,
       }}
     >
       <Pressable onPress={() => emojisStatus.isPlaying ? emoji.current?.pauseAsync() : emoji.current?.playAsync()}>
-      {/* <Pressable onPress={() => {}}> */}
-          <Video 
-            ref={emoji}
-            source={{ uri: item }}
-            style={styles.video}
-            isLooping
-            resizeMode={ResizeMode.COVER}
-            useNativeControls={false}
-            onPlaybackStatusUpdate={emojisStatus => setEmojisStatus(() => emojisStatus)}
-          />
+        <Video
+          ref={emoji}
+          source={{ uri: item }}
+          style={styles.video}
+          isLooping
+          resizeMode={ResizeMode.COVER}
+          useNativeControls={false}
+          onPlaybackStatusUpdate={emojisStatus => setEmojisStatus(() => emojisStatus)}
+        />
       </Pressable>
     </View>
   )
@@ -232,10 +239,45 @@ const styles = StyleSheet.create({
   },
   videoContainer: {
     width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height-75,
+    height: Dimensions.get('window').height - 75,
   },
   video: {
     width: '100%',
     height: '100%',
+  },
+  profileContainer: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: 10,
+    borderRadius: 30,
+  },
+  profileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  defaultProfileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  defaultProfileText: {
+    color: '#fff',
+    fontSize: 18,
+  },
+  profileName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
