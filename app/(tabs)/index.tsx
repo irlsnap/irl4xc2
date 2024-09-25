@@ -7,6 +7,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -108,6 +109,7 @@ function FeedScreen() {
           const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown'; // Fallback to "Unknown" if name is not present
           const friendPfp = friendSnapshot.data()?.pfp || ''; // Fallback to empty string if no pfp is set
           const friendReactions = friendSnapshot.data()?.reactions || []; // Fetch reactions array
+          const filteredReactions = friendReactions.filter((reaction: string) => reaction !== ''); // Remove empty strings from reactions
 
           if (friendPosts) {
             friendData.push({
@@ -115,7 +117,7 @@ function FeedScreen() {
               post: friendPosts,
               name: friendName,
               pfp: friendPfp,
-              reactions: [...friendReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] // Append the required video to the reactions
+              reactions: friendReactions ? [...filteredReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] : ["https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] // Append the required video to the reactions
             });
           }
         }
@@ -168,11 +170,13 @@ function FeedScreen() {
   );
 }
 
-const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string; name: string; pfp: string; reactions: string[] } }) => {
+const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, post: string; name: string; pfp: string; reactions: string[] } }) => {
   const video = React.useRef<Video | null>(null);
   const width = Dimensions.get('window').width;
   const [status, setStatus] = useState<any>(null);
   const [currentViewableMojiIndex, setCurrentViewableMojiIndex] = useState(0);
+
+  const i = item;
 
   useEffect(() => {
     if (!video.current) return;
@@ -199,7 +203,7 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string;
             onSnapToItem={(index) => setCurrentViewableMojiIndex(index)}
             data={item.reactions}
             renderItem={({ item, index }) => (
-              <RealMoji item={item} shouldPlay={index === currentViewableMojiIndex} />
+              <RealMoji item={item} shouldPlay={index === currentViewableMojiIndex} friendUid={i.uid} />
             )}
           />
         </View>
@@ -232,7 +236,7 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string;
   );
 }
 
-const RealMoji = ({ item, shouldPlay }: { shouldPlay: boolean; item: string }) => {
+const RealMoji = ({ item, shouldPlay, friendUid }: { shouldPlay: boolean; item: string, friendUid: string }) => {
   const emoji = React.useRef<Video | null>(null);
 
   const [emojisStatus, setEmojisStatus] = useState<any>(null);
@@ -249,6 +253,46 @@ const RealMoji = ({ item, shouldPlay }: { shouldPlay: boolean; item: string }) =
     }
   }, [shouldPlay])
 
+  const handlePress = async () => {
+    const currentUserUid = auth.currentUser?.uid; // Get the current user's UID
+    if (!currentUserUid) {
+      alert("You must be logged in to react.");
+      return;
+    }
+  
+    // Check if the item matches the specific video URL
+    if (item === 'https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9') {
+      // Fetch friend's data from Firestore
+      try {
+        const friendDoc = doc(db, 'users', friendUid); // Replace friendUid with the actual friend's UID you passed
+        const friendSnapshot = await getDoc(friendDoc);
+  
+        if (friendSnapshot.exists()) {
+          const friendData = friendSnapshot.data();
+          const alreadyReacted = friendData?.reactionUids?.includes(currentUserUid); // Check if the current user UID is in the reactionUids
+  
+          if (alreadyReacted) {
+            alert("Already reacted to this video");
+            return; // Exit the function if the user has already reacted
+          }
+        } else {
+          console.error("Friend not found");
+        }
+      } catch (error) {
+        console.error("Error fetching friend's data:", error);
+      }
+  
+      // If not reacted, navigate to the camera view
+      console.log('Trigger camera view');
+      router.push({
+        pathname: '/misc/reactionvideo',
+        params: { friendUid: friendUid }, // Pass the friend's UID here
+      });
+    } else {
+      emojisStatus.isPlaying ? emoji.current?.pauseAsync() : emoji.current?.playAsync();
+    }
+  };  
+
   return (
     <View
       style={{
@@ -258,7 +302,7 @@ const RealMoji = ({ item, shouldPlay }: { shouldPlay: boolean; item: string }) =
         borderRadius: 5,
       }}
     >
-      <Pressable onPress={() => emojisStatus.isPlaying ? emoji.current?.pauseAsync() : emoji.current?.playAsync()}>
+      <Pressable onPress={handlePress}>
         <Video
           ref={emoji}
           source={{ uri: item }}

@@ -171,7 +171,7 @@ export default function Profile() {
           const batch = writeBatch(db); // Use Firestore batch to perform multiple writes efficiently
     
           usersSnapshot.forEach((doc) => {
-            batch.update(doc.ref, { post: '', reactions: [] }); // Set the "post" field to an empty string
+            batch.update(doc.ref, { post: '', reactions: [], reactionUids: [] }); // Set the "post" field to an empty string
           });
     
           await batch.commit(); // Commit the batch operation

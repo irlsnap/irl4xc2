@@ -9,6 +9,7 @@ export default function RootLayout() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="misc/friendrequests" options={{ headerShown: false }} />
       <Stack.Screen name="misc/friends" options={{ headerShown: false }} />
+      <Stack.Screen name="misc/reactionvideo" options={{ headerShown: false }} />
     </Stack>
   );
 }
