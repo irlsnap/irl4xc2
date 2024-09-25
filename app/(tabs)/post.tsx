@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import {
   Alert,
   Button,
@@ -20,26 +20,29 @@ import CameraButton from "@/components/camera/CameraButton";
 import CameraTools from "@/components/camera/CameraTools";
 import { router } from "expo-router";
 import { useFirstTimeCamera } from "@/hooks/useFirstTimeCamera";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused, useFocusEffect } from "@react-navigation/native";
 import { useAppState } from "@react-native-community/hooks";
 import { requestMediaLibraryPermissionsAsync } from "expo-image-picker";
-import { doc, getDoc } from "firebase/firestore";  // Firestore imports
+import { collection, doc, getDoc, getDocs, limit, orderBy, query } from "firebase/firestore";  // Firestore imports
 import { auth, db } from '../firebaseConfig';
 import ComingSoonPage from '../misc/comingsoon';
+import { format, isToday, differenceInSeconds } from 'date-fns'; // Import for time comparison
 
 export default function Post() {
   const { isFirstTime, isLoading } = useFirstTimeCamera();
-  const cameraRef = React.useRef<Camera>(null);
+  const cameraRef = useRef<Camera>(null);
   const isFocused = useIsFocused();
   const appState = useAppState();
   const isActive = isFocused && appState === "active";
-  const [cameraTorch, setCameraTorch] = React.useState<boolean>(false);
-  const [cameraFacing, setCameraFacing] = React.useState<"front" | "back">(
+  const [cameraTorch, setCameraTorch] = useState<boolean>(false);
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">(
     "back"
   );
-  const [isRecording, setIsRecording] = React.useState<boolean>(false);
-  const [video, setVideo] = React.useState<string>("");
-  const [hasPostedToday, setHasPostedToday] = React.useState<boolean>(false); // Track if user has posted today
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const [video, setVideo] = useState<string>("");
+  const [hasPostedToday, setHasPostedToday] = useState<boolean>(false); // Track if user has posted today
+  const [timeLeft, setTimeLeft] = useState<number | null>(null); // Timer countdown
+  const [postingStatus, setPostingStatus] = useState<string>(""); // Posting Late or timer
 
   const device = useCameraDevice(cameraFacing, 
     {
@@ -69,9 +72,125 @@ export default function Post() {
     }
   }, []);
 
+  function convertToDate(dateString: string) {
+    const [month, day, year] = dateString.split('/').map(Number);
+    return new Date(year, month - 1, day); 
+  }
+
+  const parseTime = (timeString: string) => {
+    const [time, modifier] = timeString.split(' '); // Split time and AM/PM
+    let [hours, minutes, seconds] = time.split(":").map(Number); // Split hours, minutes, seconds
+  
+    if (modifier === "PM" && hours < 12) {
+      hours += 12; // Convert PM hours to 24-hour format
+    } else if (modifier === "AM" && hours === 12) {
+      hours = 0; // Handle midnight (12 AM)
+    }
+  
+    return { hours, minutes, seconds };
+  };
+
+  const fetchLatestPost = useCallback(async () => {
+    try {
+      const q = query(collection(db, "time"), orderBy("date", "desc"), limit(1)); // Fetch the latest document
+      const querySnapshot = await getDocs(q);
+
+      if (!querySnapshot.empty) {
+        const latestDoc = querySnapshot.docs[0].data();
+        
+        // Assume your document has fields 'date' and 'time'
+        const postDate = latestDoc.date; // Firestore Timestamp to JS Date
+        const postTime = latestDoc.time; // Time stored in string like 'HH:mm'
+        
+        // Parse the time with AM/PM
+        const { hours, minutes, seconds } = parseTime(postTime);
+        const postDateTime = convertToDate(postDate);
+
+        postDateTime.setHours(hours, minutes, seconds, 0); // Set parsed time to the postDate
+        
+        const now = new Date();
+
+        console.log(hours, minutes, seconds)
+        console.log(now)
+        
+        // Check if the post is today
+        if (isToday(postDateTime)) {
+          const timeDifference = -differenceInSeconds(postDateTime, now);
+          console.log(timeDifference)
+          
+          // If the current time is within 2 minutes of the post time
+          if (timeDifference > 0 && timeDifference <= 120) {
+            setTimeLeft(-timeDifference + 120); // Set timer to postTime + 2 minutes
+            setPostingStatus(""); // Reset posting status
+          } else {
+            setPostingStatus("Posting Late");
+          }
+        } else {
+          setPostingStatus("Posting Late");
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching latest post:", error);
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchUser = async () => {
+        try {
+          const q = query(collection(db, "time"), orderBy("date", "desc"), limit(1)); // Fetch the latest document
+          const querySnapshot = await getDocs(q);
+    
+          if (!querySnapshot.empty) {
+            const latestDoc = querySnapshot.docs[0].data();
+            
+            // Assume your document has fields 'date' and 'time'
+            const postDate = latestDoc.date; // Firestore Timestamp to JS Date
+            const postTime = latestDoc.time; // Time stored in string like 'HH:mm'
+            
+            // Parse the time with AM/PM
+            const { hours, minutes, seconds } = parseTime(postTime);
+            const postDateTime = convertToDate(postDate);
+    
+            postDateTime.setHours(hours, minutes, seconds, 0); // Set parsed time to the postDate
+            
+            const now = new Date();
+    
+            console.log(hours, minutes, seconds)
+            console.log(now)
+            
+            // Check if the post is today
+            if (isToday(postDateTime)) {
+              const timeDifference = -differenceInSeconds(postDateTime, now);
+              console.log(timeDifference)
+              
+              // If the current time is within 2 minutes of the post time
+              if (timeDifference > 0 && timeDifference <= 120) {
+                setTimeLeft(-timeDifference + 120); // Set timer to postTime + 2 minutes
+                setPostingStatus(""); // Reset posting status
+              } else {
+                setPostingStatus("Posting Late");
+              }
+            } else {
+              setPostingStatus("Posting Late");
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching latest post:", error);
+        }
+      };
+  
+      fetchUser();
+  
+      return () => {
+        // isActive = false;
+      };
+    }, [timeLeft, postingStatus])
+  );
+
   useEffect(() => {
     checkIfPostedToday();
-  }, [checkIfPostedToday]);
+  }, [checkIfPostedToday, fetchLatestPost]);
 
   const onFlipCameraPressed = useCallback(() => {
     setCameraFacing((p) => (p === 'back' ? 'front' : 'back'));
@@ -92,6 +211,26 @@ export default function Post() {
 
     checkPermissions();
   }, []);
+
+  useEffect(() => {
+    if (timeLeft === null) return;
+    if (timeLeft <= 0) {
+      setPostingStatus("Time's Up!");
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setTimeLeft((prevTime) => (prevTime === null ? null : prevTime - 1));
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  const formatTimeLeft = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds < 10 ? `0${remainingSeconds}` : remainingSeconds}`;
+  };
 
   const handleContinue = async () => {
     const allPermissionsGranted = await requestAllPermissions();
@@ -208,6 +347,25 @@ export default function Post() {
   
   return (
     <View style={{ flex: 1 }}>
+      {timeLeft !== null ? (
+        <SafeAreaView style={{position: "absolute",
+          alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            zIndex: 4,
+         }}>
+          <ThemedText type="subtitle">Time Left: {formatTimeLeft(timeLeft)}</ThemedText>
+        </SafeAreaView>
+        ) : (
+          <SafeAreaView style={{position: "absolute",
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '100%',
+            zIndex: 4,
+           }}>
+            <ThemedText type="subtitle">{postingStatus}</ThemedText>
+          </SafeAreaView>
+        )}
       <Camera
         style={StyleSheet.absoluteFill}
         device={device}

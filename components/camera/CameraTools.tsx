@@ -1,5 +1,6 @@
 import { SafeAreaView, View } from "react-native";
 import IconButton from "./IconButton";
+import { ThemedText } from "../shared/ThemedText";
 
 interface CameraToolsProps {
   cameraTorch: boolean;
