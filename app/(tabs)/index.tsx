@@ -6,6 +6,7 @@ import ComingSoonPage from '../misc/comingsoon';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { useFocusEffect } from '@react-navigation/native';
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -35,6 +36,39 @@ export default function MyTabs() {
 }
 
 function FeedScreen() {
+  const [userHasPost, setUserHasPost] = useState<boolean>(true); // Track if the current user has a post
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const fetchUser = async () => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        try {
+          const userDoc = doc(db, 'users', currentUser.uid);
+          const userSnapshot = await getDoc(userDoc);
+          const userPost = userSnapshot.data()?.post || '';
+
+          if (!userPost) {
+            setUserHasPost(false); // If the user hasn't posted anything, set to false
+            return;
+          }
+
+          setUserHasPost(true); // The current user has posted something
+
+        } catch (error) {
+          console.error("Error fetching latest post:", error);
+        }
+      };
+  
+      fetchUser();
+  
+      return () => {
+        // isActive = false;
+      };
+    }, [userHasPost])
+  );
+
   useEffect(() => {
     Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
     fetchFriendVideos(); // Fetch the videos of friends when component mounts
@@ -45,9 +79,18 @@ function FeedScreen() {
     if (!currentUser) return;
 
     try {
-      // Query Firestore to get the current user's friends
+      // Query Firestore to get the current user's details
       const userDoc = doc(db, 'users', currentUser.uid);
       const userSnapshot = await getDoc(userDoc);
+      const userPost = userSnapshot.data()?.post || '';
+
+      if (!userPost) {
+        setUserHasPost(false); // If the user hasn't posted anything, set to false
+        return;
+      }
+
+      setUserHasPost(true); // The current user has posted something
+
       const friends = userSnapshot.data()?.friends || {}; // Retrieve the friends map
 
       // Filter out friends and fetch their posts
@@ -94,6 +137,12 @@ function FeedScreen() {
     }
   }
   const viewabilityConfigCallbackPairs = useRef([{ viewabilityConfig, onViewableItemsChanged }])
+
+  // If user hasn't posted anything, show the ComingSoonPage
+  if (!userHasPost) {
+    return <ComingSoonPage text="You haven't posted yet. Go Post!" />;
+  }
+
   return (
     <View style={styles.container}>
       <Image

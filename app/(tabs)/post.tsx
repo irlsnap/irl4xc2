@@ -51,27 +51,6 @@ export default function Post() {
     ]}
   );
 
-  // Fetch the user's post status
-  const checkIfPostedToday = useCallback(async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    try {
-      const userDoc = doc(db, 'users', currentUser.uid);
-      const userSnapshot = await getDoc(userDoc);
-      const post = userSnapshot.data()?.post || '';
-
-      // If the 'post' field is not an empty string, it means the user has already posted today
-      if (post) {
-        setHasPostedToday(true);
-      } else {
-        setHasPostedToday(false);
-      }
-    } catch (error) {
-      console.error("Error fetching user post data:", error);
-    }
-  }, []);
-
   function convertToDate(dateString: string) {
     const [month, day, year] = dateString.split('/').map(Number);
     return new Date(year, month - 1, day); 
@@ -90,52 +69,29 @@ export default function Post() {
     return { hours, minutes, seconds };
   };
 
-  const fetchLatestPost = useCallback(async () => {
-    try {
-      const q = query(collection(db, "time"), orderBy("date", "desc"), limit(1)); // Fetch the latest document
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        const latestDoc = querySnapshot.docs[0].data();
-        
-        // Assume your document has fields 'date' and 'time'
-        const postDate = latestDoc.date; // Firestore Timestamp to JS Date
-        const postTime = latestDoc.time; // Time stored in string like 'HH:mm'
-        
-        // Parse the time with AM/PM
-        const { hours, minutes, seconds } = parseTime(postTime);
-        const postDateTime = convertToDate(postDate);
-
-        postDateTime.setHours(hours, minutes, seconds, 0); // Set parsed time to the postDate
-        
-        const now = new Date();
-
-        console.log(hours, minutes, seconds)
-        console.log(now)
-        
-        // Check if the post is today
-        if (isToday(postDateTime)) {
-          const timeDifference = -differenceInSeconds(postDateTime, now);
-          console.log(timeDifference)
-          
-          // If the current time is within 2 minutes of the post time
-          if (timeDifference > 0 && timeDifference <= 120) {
-            setTimeLeft(-timeDifference + 120); // Set timer to postTime + 2 minutes
-            setPostingStatus(""); // Reset posting status
-          } else {
-            setPostingStatus("Posting Late");
-          }
-        } else {
-          setPostingStatus("Posting Late");
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching latest post:", error);
-    }
-  }, []);
-
   useFocusEffect(
     React.useCallback(() => {
+      // Fetch the user's post status
+      const checkIfPostedToday = async () => {
+        const currentUser = auth.currentUser;
+        if (!currentUser) return;
+
+        try {
+          const userDoc = doc(db, 'users', currentUser.uid);
+          const userSnapshot = await getDoc(userDoc);
+          const post = userSnapshot.data()?.post || '';
+
+          // If the 'post' field is not an empty string, it means the user has already posted today
+          if (post) {
+            setHasPostedToday(true);
+          } else {
+            setHasPostedToday(false);
+          }
+        } catch (error) {
+          console.error("Error fetching user post data:", error);
+        }
+      };
+
       const fetchUser = async () => {
         try {
           const q = query(collection(db, "time"), orderBy("date", "desc"), limit(1)); // Fetch the latest document
@@ -156,13 +112,13 @@ export default function Post() {
             
             const now = new Date();
     
-            console.log(hours, minutes, seconds)
-            console.log(now)
+            // console.log(hours, minutes, seconds)
+            // console.log(now)
             
             // Check if the post is today
             if (isToday(postDateTime)) {
               const timeDifference = -differenceInSeconds(postDateTime, now);
-              console.log(timeDifference)
+              // console.log(timeDifference)
               
               // If the current time is within 2 minutes of the post time
               if (timeDifference > 0 && timeDifference <= 120) {
@@ -180,17 +136,14 @@ export default function Post() {
         }
       };
   
+      checkIfPostedToday();
       fetchUser();
   
       return () => {
         // isActive = false;
       };
-    }, [timeLeft, postingStatus])
+    }, [timeLeft, postingStatus, hasPostedToday])
   );
-
-  useEffect(() => {
-    checkIfPostedToday();
-  }, [checkIfPostedToday, fetchLatestPost]);
 
   const onFlipCameraPressed = useCallback(() => {
     setCameraFacing((p) => (p === 'back' ? 'front' : 'back'));
