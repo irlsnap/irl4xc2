@@ -70,7 +70,9 @@ export default function Signup() {
                       fname: fname,
                       lname: lname,
                       ambassador: ambassador,
-                      friends: {}
+                      friends: {},
+                      post: '',
+                      reactions: []
                     };
                     await setDoc(doc(db, "users", user.uid), data);
                     await registerForPushNotificationsAsync()

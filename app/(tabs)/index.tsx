@@ -7,14 +7,6 @@ import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 
-const emojis = [
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-  "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-];
-
 const Tab = createMaterialTopTabNavigator();
 
 export default function MyTabs() {
@@ -62,9 +54,9 @@ function FeedScreen() {
       const friendUIDs = Object.keys(friends).filter((uid) => friends[uid] === true);
 
       if (friendUIDs.length > 0) {
-        const friendData: { uid: string; post: string; name: string; pfp: string }[] = [];
+        const friendData: { uid: string; post: string; name: string; pfp: string, reactions: string[] }[] = [];
 
-        // Fetch posts (videos) from each friend along with name and pfp
+        // Fetch posts (videos) from each friend along with name, pfp, and reactions
         for (const uid of friendUIDs) {
           const friendDoc = doc(db, 'users', uid);
           const friendSnapshot = await getDoc(friendDoc);
@@ -72,20 +64,27 @@ function FeedScreen() {
           const friendPosts = friendSnapshot.data()?.post || '';
           const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown'; // Fallback to "Unknown" if name is not present
           const friendPfp = friendSnapshot.data()?.pfp || ''; // Fallback to empty string if no pfp is set
+          const friendReactions = friendSnapshot.data()?.reactions || []; // Fetch reactions array
 
           if (friendPosts) {
-            friendData.push({ uid, post: friendPosts, name: friendName, pfp: friendPfp });
+            friendData.push({
+              uid,
+              post: friendPosts,
+              name: friendName,
+              pfp: friendPfp,
+              reactions: [...friendReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] // Append the required video to the reactions
+            });
           }
         }
 
-        setVideos(friendData); // Update state with friend data (video, name, pfp)
+        setVideos(friendData); // Update state with friend data (video, name, pfp, reactions)
       }
     } catch (error) {
       console.error('Error fetching friend videos:', error);
     }
   };
 
-  const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string }[]>([]);
+  const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string; reactions: string[] }[]>([]);
 
   const [currentViewableItemIndex, setCurrentViewableItemIndex] = useState(0);
   const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 }
@@ -101,26 +100,26 @@ function FeedScreen() {
         source={require('@/assets/images/app_logo_transparent.png')}
         style={styles.logo}
       />
-      
-      {videos.length > 0 ? 
-        <FlatList
-        data={videos}
-        renderItem={({ item, index }) => (
-          <Item item={item} shouldPlay={index === currentViewableItemIndex} />
-        )}
-        keyExtractor={item => item.uid}
-        pagingEnabled
-        horizontal={false}
-        showsVerticalScrollIndicator={false}
-        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
-      /> : <ComingSoonPage text='No Posts yet. Add more friends!'/>
-      }
-      
-      </View>
-    );
-  }
 
-const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string; name: string; pfp: string } }) => {
+      {videos.length > 0 ?
+        <FlatList
+          data={videos}
+          renderItem={({ item, index }) => (
+            <Item item={item} shouldPlay={index === currentViewableItemIndex} />
+          )}
+          keyExtractor={item => item.uid}
+          pagingEnabled
+          horizontal={false}
+          showsVerticalScrollIndicator={false}
+          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+        /> : <ComingSoonPage text='No Posts yet. Add more friends!' />
+      }
+
+    </View>
+  );
+}
+
+const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string; name: string; pfp: string; reactions: string[] } }) => {
   const video = React.useRef<Video | null>(null);
   const width = Dimensions.get('window').width;
   const [status, setStatus] = useState<any>(null);
@@ -149,7 +148,7 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { post: string;
             height={width / 2}
             scrollAnimationDuration={500}
             onSnapToItem={(index) => setCurrentViewableMojiIndex(index)}
-            data={emojis}
+            data={item.reactions}
             renderItem={({ item, index }) => (
               <RealMoji item={item} shouldPlay={index === currentViewableMojiIndex} />
             )}
