@@ -1,11 +1,12 @@
-import { router } from "expo-router";
+import { router, useNavigation } from "expo-router";
 import Login from "./auth/login";
 import { auth } from "./firebaseConfig";
 import { useEffect, useRef, useState } from "react";
 import { onAuthStateChanged } from "firebase/auth";
 import registerForPushNotificationsAsync from "./notifs";
 import * as Notifications from 'expo-notifications';
-import { Platform } from "react-native";
+import { ActivityIndicator, Platform, View, StyleSheet } from "react-native";
+import { Image } from "react-native";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -23,6 +24,13 @@ export default function Index() {
     undefined
   );
 
+  const navigation = useNavigation();
+
+
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
   useEffect(() => {
     onAuthStateChanged(auth, async (user) => {
       await registerForPushNotificationsAsync();
@@ -38,6 +46,7 @@ export default function Index() {
       });
 
       if (user) router.replace("/(tabs)/");
+      else router.replace("/auth/login");
   
       return () => {
         notificationListener.current &&
@@ -49,6 +58,32 @@ export default function Index() {
   }, []);
 
   return (
-    <Login/>
+    <View style={styles.container}>
+      {/* Logo */}
+      <Image
+        source={require('@/assets/images/app_logo_transparent.png')}
+        style={styles.logo}
+      />
+      
+      {/* Loading Spinner */}
+      <ActivityIndicator size="large" color="#fff" style={styles.spinner} />
+    </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000', // Set your preferred background color
+  },
+  logo: {
+    width: "60%", // Adjust width relative to screen size
+    height: "50%", // Adjust height relative to screen size
+    marginBottom: 20,
+  },
+  spinner: {
+    marginTop: 20,
+  },
+});

@@ -24,7 +24,7 @@ export default function Login() {
   return (
     <ThemedView style={{flex:1, alignItems:'center', justifyContent:'center'}}>
       <Image
-          source={require('@/assets/images/app_logo_dark.png')}
+          source={require('@/assets/images/app_logo_transparent.png')}
           style={styles.logo}
         />
       
@@ -87,9 +87,8 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   logo: {
-    width: '60%',
-    height: '40%',
-    resizeMode: 'center',
+    width: '50%',
+    height: '50%',
     marginVertical: -80
   },
   forgotPassword: {

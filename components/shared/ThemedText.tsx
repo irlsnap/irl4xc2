@@ -1,12 +1,7 @@
 import { Text, type TextProps, StyleSheet } from 'react-native';
 import {
   useFonts,
-  AbhayaLibre_400Regular,
-  AbhayaLibre_500Medium,
-  AbhayaLibre_600SemiBold,
-  AbhayaLibre_700Bold,
-  AbhayaLibre_800ExtraBold,
-} from '@expo-google-fonts/abhaya-libre';
+} from 'expo-font';
 import { useThemeColor } from '@/hooks/useThemeColor';
 
 export type ThemedTextProps = TextProps & {
@@ -25,11 +20,6 @@ export function ThemedText({
   const color = useThemeColor({ light: lightColor, dark: darkColor }, 'text');
   let [fontsLoaded] = useFonts({
     'Zoi-Regular': require('@/assets/fonts/Zoi-Regular.otf'),
-    AbhayaLibre_400Regular,
-    AbhayaLibre_500Medium,
-    AbhayaLibre_600SemiBold,
-    AbhayaLibre_700Bold,
-    AbhayaLibre_800ExtraBold,
   });
 
   return (
@@ -54,39 +44,33 @@ const styles = StyleSheet.create({
   default: {
     fontSize: 16,
     lineHeight: 24,
-    // fontFamily: 'AbhayaLibre_400Regular',
     fontFamily: 'Zoi-Regular',
   },
   defaultSemiBold: {
     fontSize: 16,
     lineHeight: 24,
-    // fontFamily: 'AbhayaLibre_600SemiBold',
     fontFamily: 'Zoi-Regular',
   },
   title: {
     fontSize: 26,
     textAlign: 'center',
     fontWeight: 'bold',
-    // fontFamily: 'AbhayaLibre_700Bold',
     fontFamily: 'Zoi-Regular',
   },
   subtitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    // fontFamily: 'AbhayaLibre_700Bold',
     fontFamily: 'Zoi-Regular',
   },
   link: {
     lineHeight: 30,
     fontSize: 16,
     color: '#3797EF',
-    // fontFamily: 'AbhayaLibre_400Regular',
     fontFamily: 'Zoi-Regular',
   },
   grayed: {
     fontSize: 16,
     color: '#414141',
-    // fontFamily: 'AbhayaLibre_400Regular',
     fontFamily: 'Zoi-Regular',
   }
 });

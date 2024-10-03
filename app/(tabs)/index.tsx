@@ -8,10 +8,16 @@ import { auth, db } from '../firebaseConfig';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
+import { useFonts } from 'expo-font';
 
 const Tab = createMaterialTopTabNavigator();
 
 export default function MyTabs() {
+  let [fontsLoaded] = useFonts({
+    'Zoi-Regular': require('@/assets/fonts/Zoi-Regular.otf'),
+  });
+
+  if (fontsLoaded)
   return (
     <Tab.Navigator
       initialRouteName='friends'
@@ -198,7 +204,7 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
             snapEnabled
             loop
             width={width / 4}
-            height={width / 2}
+            height={width / 2.5}
             scrollAnimationDuration={500}
             onSnapToItem={(index) => setCurrentViewableMojiIndex(index)}
             data={item.reactions}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList } from "react-native";
+import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList, ActivityIndicator } from "react-native";
 import * as ImagePicker from 'expo-image-picker'; 
 import { auth, db, storage } from "../firebaseConfig";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -36,6 +36,19 @@ export default function Profile() {
           setEmail(data.email);
           setName(data.fname + " " + data.lname);
           setHandle(data.username);
+        }
+      }
+    }
+
+    fetchData();
+  }, [navigation]);
+
+  useEffect(() => {
+    async function fetchData() {
+      if (auth.currentUser) {
+        const userRef = await getDoc(doc(db, "users", auth.currentUser.uid));
+        const data = userRef.data();
+        if (data) {
           setImageURL(data.pfp);
           setVideos(data.videos); // Fetch the videos array
         }
@@ -43,7 +56,7 @@ export default function Profile() {
     }
 
     fetchData();
-  }, [navigation]);
+  }, []);
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -119,16 +132,20 @@ export default function Profile() {
       </ThemedView>
 
       <ThemedView style={{ flex: 1, alignItems: 'center', top: 0 }}>
-        <TouchableOpacity onPress={pickImage}>
-          <View style={styles.imageContainer}>
-            {downloadURL && <Image source={{ uri: downloadURL }} style={styles.image} />}
-          </View>
-        </TouchableOpacity>
+        {downloadURL ? 
+          <TouchableOpacity onPress={pickImage}>
+            <View style={styles.imageContainer}>
+              {downloadURL && <Image source={{ uri: downloadURL }} style={styles.image} />}
+            </View>
+          </TouchableOpacity> :
+          <ActivityIndicator size="large" color="#fff" style={{marginTop: "40%"}} />
+        }
+        
 
         <ThemedText style={styles.handle} type="subtitle">@{handle}</ThemedText>
 
         {/* FlatList to display videos */}
-        {videos ? <ThemedText style={{marginTop:"27%"}} type="title">Post to see your videos!</ThemedText> : <View></View>}
+        {videos ? <ThemedText style={{marginTop:"15%"}} type="title">Post to see your videos!</ThemedText> : <ActivityIndicator size="large" color="#fff" style={{marginTop: "40%"}} />}
         <FlatList
           data={videos}
           renderItem={renderItem}
@@ -164,6 +181,16 @@ export default function Profile() {
         const formattedDate = currentDate.toLocaleDateString(); // Format the current date
     
         try {
+          // Step 2: Check if a notification has already been sent today
+          const timeRef = collection(db, 'time');
+          const querySnapshot = await getDocs(query(timeRef, where('date', '==', formattedDate)));
+    
+          if (!querySnapshot.empty) {
+            // If a notification for today exists, show an alert
+            alert('A notification has already been sent for today.');
+            return; // Exit the function, preventing further actions
+          }
+
           // Step 1: Empty the "post" field for all users
           const usersRef = collection(db, 'users');
           const usersSnapshot = await getDocs(usersRef);
@@ -177,16 +204,6 @@ export default function Profile() {
           await batch.commit(); // Commit the batch operation
           console.log('All users\' "post" fields have been cleared.');
     
-          // Step 2: Check if a notification has already been sent today
-          const timeRef = collection(db, 'time');
-          const querySnapshot = await getDocs(query(timeRef, where('date', '==', formattedDate)));
-    
-          if (!querySnapshot.empty) {
-            // If a notification for today exists, show an alert
-            alert('A notification has already been sent for today.');
-            return; // Exit the function, preventing further actions
-          }
-    
           // Step 3: Fetch all user tokens
           const allUserTokens = await getAllUserTokens();
           console.log(allUserTokens);
@@ -199,15 +216,25 @@ export default function Profile() {
             body: 'You have two minutes to capture a video and share with your friends!',
             data: { someData: 'Time to IRL' },
           };
-    
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "⚠️ Time to IRL ⚠️",
-              body: 'You have two minutes to capture a video and share with your friends!',
-              data: { data: 'goes here', test: { test1: 'more data' } },
+
+          await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              'Accept-encoding': 'gzip, deflate',
+              'Content-Type': 'application/json',
             },
-            trigger: { seconds: 1 },
+            body: JSON.stringify(message),
           });
+    
+          // await Notifications.scheduleNotificationAsync({
+          //   content: {
+          //     title: "⚠️ Time to IRL ⚠️",
+          //     body: 'You have two minutes to capture a video and share with your friends!',
+          //     data: { data: 'goes here', test: { test1: 'more data' } },
+          //   },
+          //   trigger: { seconds: 1 },
+          // });
     
           // Step 5: Add a document to Firestore in the 'time' collection with the date and time
           await addDoc(collection(db, 'time'), {

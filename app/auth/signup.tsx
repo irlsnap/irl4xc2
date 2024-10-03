@@ -36,7 +36,7 @@ export default function Signup() {
     
       <ThemedView style={{flex:1, alignItems:'center', justifyContent:'center'}}>
       <Image
-          source={require('@/assets/images/app_logo_dark.png')}
+          source={require('@/assets/images/app_logo_transparent.png')}
           style={styles.logo}
         />
       
@@ -125,7 +125,6 @@ const styles = StyleSheet.create({
   logo: {
     width: '60%',
     height: '40%',
-    resizeMode: 'center',
     marginVertical: -80
   },
   forgotPassword: {
