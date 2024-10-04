@@ -115,7 +115,7 @@ export default function Search() {
 const getFriendToken = async (friendUid: string) => {
   const friendDoc = doc(db, 'users', friendUid);
   const friendSnapshot = await getDoc(friendDoc);
-  return friendSnapshot.data()?.expoPushToken || null; // Assuming expoPushToken is stored in user data
+  return friendSnapshot.data()?.pushToken || null; // Assuming expoPushToken is stored in user data
 };
 
 const sendFriendRequestNotification = async (friendUid: string) => {

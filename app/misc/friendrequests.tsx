@@ -59,7 +59,7 @@ export default function FriendRequests() {
 const getFriendToken = async (friendUid: string) => {
   const friendDoc = doc(db, 'users', friendUid);
   const friendSnapshot = await getDoc(friendDoc);
-  return friendSnapshot.data()?.expoPushToken || null; // Assuming expoPushToken is stored in user data
+  return friendSnapshot.data()?.pushToken || null; // Assuming expoPushToken is stored in user data
 };
 
 // Function to send a notification that the friend request was accepted
@@ -73,7 +73,7 @@ const sendFriendAcceptedNotification = async (friendUid: string) => {
         to: friendToken,
         sound: 'default',
         title: '🎉 Friend Request Accepted',
-        body: `${currentUserName} accepted your friend request!`,
+        body: '${currentUserName} accepted your friend request!',
         data: { friendUid }, // You can pass custom data with the notification
       };
 

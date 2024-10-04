@@ -226,15 +226,6 @@ export default function Profile() {
             },
             body: JSON.stringify(message),
           });
-
-          // await Notifications.scheduleNotificationAsync({
-          //   content: {
-          //     title: "⚠️ Time to IRL ⚠️",
-          //     body: 'You have two minutes to capture a video and share with your friends!',
-          //     data: { data: 'goes here', test: { test1: 'more data' } },
-          //   },
-          //   trigger: { seconds: 1 },
-          // });
     
           // Step 5: Add a document to Firestore in the 'time' collection with the date and time
           await addDoc(collection(db, 'time'), {

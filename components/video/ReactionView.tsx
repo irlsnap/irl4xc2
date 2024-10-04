@@ -48,7 +48,7 @@ export default function ReactionViewComponent({ video, setVideo, friendUID }: Vi
 const getFriendToken = async (friendUID: string) => {
   const friendDoc = doc(db, 'users', friendUID);
   const friendSnapshot = await getDoc(friendDoc);
-  return friendSnapshot.data()?.expoPushToken || null; // Assuming expoPushToken is stored in user data
+  return friendSnapshot.data()?.pushToken || null; // Assuming expoPushToken is stored in user data
 };
 
 // Function to send a notification when a reaction is posted
@@ -61,7 +61,7 @@ const sendReactionPostedNotification = async (friendUID: string) => {
         to: friendToken,
         sound: 'default',
         title: 'New Reaction 👀',
-        body: `Someone posted a reaction to your video!`,
+        body: 'Someone posted a reaction to your video!',
         data: { someData: 'reaction_posted' },
       };
 

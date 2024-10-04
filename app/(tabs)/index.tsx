@@ -86,39 +86,46 @@ function FeedScreen() {
     if (!currentUser) return;
   
     try {
-      // Query Firestore to get the current user's details
       const userDoc = doc(db, 'users', currentUser.uid);
   
-      // Setup a real-time listener for user changes
+      // Real-time listener for user changes
       const unsubscribe = onSnapshot(userDoc, (userSnapshot) => {
         const userPost = userSnapshot.data()?.post || '';
   
         if (!userPost) {
-          setUserHasPost(false); // If the user hasn't posted anything, set to false
+          setUserHasPost(false);
           return;
         }
   
-        setUserHasPost(true); // The current user has posted something
+        setUserHasPost(true);
   
-        const friends = userSnapshot.data()?.friends || {}; // Retrieve the friends map
+        const friends = userSnapshot.data()?.friends || {};
   
-        // Filter out friends and fetch their posts
+        // Filter friends who are accepted
         const friendUIDs = Object.keys(friends).filter((uid) => friends[uid] === true);
   
-        if (friendUIDs.length > 0) {
-          const friendData: { uid: string; post: string; name: string; pfp: string, reactions: string[] }[] = [];
+        const allVideos: { uid: string; post: string; name: string; pfp: string, reactions: string[] }[] = [];
   
-          // Fetch posts (videos) from each friend along with name, pfp, and reactions
+        // Add the current user's video to the feed first
+        allVideos.push({
+          uid: currentUser.uid,
+          post: userPost,
+          name: userSnapshot.data()?.fname + " " + userSnapshot.data()?.lname || 'Me',
+          pfp: userSnapshot.data()?.pfp || '',
+          reactions: userSnapshot.data()?.reactions || []
+        });
+  
+        // Fetch posts (videos) from friends
+        if (friendUIDs.length > 0) {
           friendUIDs.forEach(async (uid) => {
             const friendDoc = doc(db, 'users', uid);
   
-            // Setup a real-time listener for friend changes
             onSnapshot(friendDoc, (friendSnapshot) => {
               const friendPosts = friendSnapshot.data()?.post || '';
-              const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown'; // Fallback to "Unknown" if name is not present
-              const friendPfp = friendSnapshot.data()?.pfp || ''; // Fallback to empty string if no pfp is set
-              const friendReactions = friendSnapshot.data()?.reactions || []; // Fetch reactions array
-              const filteredReactions = friendReactions.filter((reaction: string) => reaction !== ''); // Remove empty strings from reactions
+              const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown';
+              const friendPfp = friendSnapshot.data()?.pfp || '';
+              const friendReactions = friendSnapshot.data()?.reactions || [];
+              const filteredReactions = friendReactions.filter((reaction: string) => reaction !== '');
   
               if (friendPosts) {
                 const updatedFriendData = {
@@ -126,35 +133,25 @@ function FeedScreen() {
                   post: friendPosts,
                   name: friendName,
                   pfp: friendPfp,
-                  reactions: friendReactions ? [...filteredReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] : ["https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] // Append the required video to the reactions
+                  reactions: [...filteredReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] // Add the hardcoded video for friends
                 };
   
-                // Update the friendData array with the new data
-                setVideos((prevVideos) => {
-                  const index = prevVideos.findIndex(v => v.uid === uid);
-                  if (index > -1) {
-                    // Update existing entry
-                    const newVideos = [...prevVideos];
-                    newVideos[index] = updatedFriendData;
-                    return newVideos;
-                  } else {
-                    // Add new entry
-                    return [...prevVideos, updatedFriendData];
-                  }
-                });
+                allVideos.push(updatedFriendData);
+                setVideos([...allVideos]); // Set the videos state
               }
             });
           });
+        } else {
+          setVideos([...allVideos]); // Set only the user's video if no friends
         }
       });
   
-      // Remember to unsubscribe from the listener when the component unmounts
       return () => unsubscribe();
-      
+  
     } catch (error) {
       console.error('Error fetching friend videos:', error);
     }
-  };
+  };  
 
   const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string; reactions: string[] }[]>([]);
 
