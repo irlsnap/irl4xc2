@@ -41,6 +41,7 @@ export default function Reaction() {
   );
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [video, setVideo] = useState<string>("");
+  const [timer, setTimer] = useState<number>(10); // Timer state set to 10 seconds
 
   const { friendUid } = useLocalSearchParams();
 
@@ -67,6 +68,26 @@ export default function Reaction() {
     checkPermissions();
   }, []);
 
+  // Timer Countdown Effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (isRecording && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (timer === 0) {
+      setTimer(10);
+      stopRecording();
+    }
+
+    return () => clearInterval(interval);
+  }, [isRecording, timer]);
+
+  const stopRecording = async () => {
+    await cameraRef.current?.stopRecording();
+    setIsRecording(false);
+  }
 
   const handleContinue = async () => {
     const allPermissionsGranted = await requestAllPermissions();
@@ -188,6 +209,9 @@ export default function Reaction() {
         video={true}
         audio={true}
       />
+      <View style={styles.timerContainer}>
+        <ThemedText style={styles.timerText}>{timer}s</ThemedText>
+      </View>
       <CameraTools
         cameraTorch={cameraTorch}
         setCameraFacing={setCameraFacing}
@@ -203,6 +227,21 @@ export default function Reaction() {
 }
 
 const styles = StyleSheet.create({
+  timerContainer: {
+    position: "absolute",
+    top: 50,
+    left: "50%",
+    transform: [{ translateX: -25 }],
+    zIndex: 10,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 10,
+  },
+  timerText: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "bold",
+  },
   logo: {
     width: "20%",
     height: "20%",

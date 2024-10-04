@@ -12,7 +12,7 @@ import Animated, {
 import { uploadBytesResumable, getDownloadURL, ref } from "firebase/storage";
 import { auth, db, storage } from "../../app/firebaseConfig";
 import { ProgressBar } from "react-native-paper";
-import { addDoc, arrayUnion, collection, doc, setDoc, updateDoc } from "firebase/firestore";
+import { addDoc, arrayUnion, collection, doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { router } from "expo-router";
 
 interface VideoViewProps {
@@ -43,6 +43,46 @@ export default function ReactionViewComponent({ video, setVideo, friendUID }: Vi
       subscription.remove();
     };
   }, [player]);
+
+  // Function to fetch friend's Expo push notification token
+const getFriendToken = async (friendUID: string) => {
+  const friendDoc = doc(db, 'users', friendUID);
+  const friendSnapshot = await getDoc(friendDoc);
+  return friendSnapshot.data()?.expoPushToken || null; // Assuming expoPushToken is stored in user data
+};
+
+// Function to send a notification when a reaction is posted
+const sendReactionPostedNotification = async (friendUID: string) => {
+  try {
+    const friendToken = await getFriendToken(friendUID);
+
+    if (friendToken) {
+      const message = {
+        to: friendToken,
+        sound: 'default',
+        title: 'New Reaction 👀',
+        body: `Someone posted a reaction to your video!`,
+        data: { someData: 'reaction_posted' },
+      };
+
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
+      });
+
+      console.log("Reaction notification sent to friend's device!");
+    } else {
+      console.log("Friend does not have a registered Expo push token.");
+    }
+  } catch (error) {
+    console.error("Error sending reaction notification:", error);
+  }
+};
 
   async function uploadImage(uri: string, fileType: string) {
     console.log(uri)
@@ -84,6 +124,9 @@ export default function ReactionViewComponent({ video, setVideo, friendUID }: Vi
           router.replace("/(tabs)/")
 
           console.log("Video URL saved to both 'reactions' and 'reactionUids' fields");
+
+          if (typeof friendUID == "string")
+          await sendReactionPostedNotification(friendUID);
         } catch (error) {
           console.error("Error saving video URL to Firestore:", error);
         }

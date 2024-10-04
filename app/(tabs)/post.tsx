@@ -43,6 +43,7 @@ export default function Post() {
   const [hasPostedToday, setHasPostedToday] = useState<boolean>(false); // Track if user has posted today
   const [timeLeft, setTimeLeft] = useState<number | null>(null); // Timer countdown
   const [postingStatus, setPostingStatus] = useState<string>(""); // Posting Late or timer
+  const [timer, setTimer] = useState<number>(25); // Timer state set to 25 seconds
 
   const device = useCameraDevice(cameraFacing, 
     {
@@ -68,6 +69,27 @@ export default function Post() {
   
     return { hours, minutes, seconds };
   };
+
+  // Timer Countdown Effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (isRecording && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prev) => prev - 1);
+      }, 1000);
+    } else if (timer === 0) {
+      setTimer(25);
+      stopRecording();
+    }
+
+    return () => clearInterval(interval);
+  }, [isRecording, timer]);
+
+  const stopRecording = async () => {
+    await cameraRef.current?.stopRecording();
+    setIsRecording(false);
+  }
 
   useFocusEffect(
     React.useCallback(() => {
@@ -329,6 +351,9 @@ export default function Post() {
         video={true}
         audio={true}
       />
+      <View style={styles.timerContainer}>
+        <ThemedText style={styles.timerText}>{timer}s</ThemedText>
+      </View>
       <CameraTools
         cameraTorch={cameraTorch}
         setCameraFacing={setCameraFacing}
@@ -344,6 +369,21 @@ export default function Post() {
 }
 
 const styles = StyleSheet.create({
+  timerContainer: {
+    position: "absolute",
+    top: 50,
+    left: "50%",
+    transform: [{ translateX: -25 }],
+    zIndex: 10,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    padding: 10,
+    borderRadius: 10,
+  },
+  timerText: {
+    color: "#fff",
+    fontSize: 24,
+    fontWeight: "bold",
+  },
   logo: {
     width: "20%",
     height: "20%",

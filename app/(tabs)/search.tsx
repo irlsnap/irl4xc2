@@ -111,29 +111,69 @@ export default function Search() {
     setUsers(userList);
   };
 
-  // Function to handle adding a friend
-  const handleAddFriend = async (otherUser: User) => {
-    if (!currentUser) return;
+  // Assume that 'getFriendToken' is a function that fetches the friend's notification token from Firestore
+const getFriendToken = async (friendUid: string) => {
+  const friendDoc = doc(db, 'users', friendUid);
+  const friendSnapshot = await getDoc(friendDoc);
+  return friendSnapshot.data()?.expoPushToken || null; // Assuming expoPushToken is stored in user data
+};
 
-    try {
-      // Update current user's "friends" field
-      const currentUserRef = doc(db, "users", currentUser.uid);
-      await updateDoc(currentUserRef, {
-        [`friends.${otherUser.uid}`]: false, // Initial friend request sent, not accepted yet
+const sendFriendRequestNotification = async (friendUid: string) => {
+  try {
+    // Fetch the friend's Expo push token
+    const friendToken = await getFriendToken(friendUid);
+
+    if (friendToken) {
+      // Construct the notification message
+      const message = {
+        to: friendToken,
+        sound: 'default',
+        title: 'Friend Request 👀',
+        body: 'You have a new friend request!',
+        data: { friendUid }, // You can pass custom data with the notification
+      };
+
+      // Send the notification using Expo's push notification service
+      await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(message),
       });
 
-      // Update other user's "friends" field
-      const otherUserRef = doc(db, "users", otherUser.uid);
-      await updateDoc(otherUserRef, {
-        [`friends.${currentUser.uid}`]: false, // Same for the other user
-      });
-
-      // Mark the friend request as sent locally
-      setAddedFriends((prev) => ({ ...prev, [otherUser.uid]: true }));
-    } catch (error) {
-      console.error("Error adding friend:", error);
+      console.log('Friend request notification sent successfully!');
+    } else {
+      console.log('Friend does not have a registered Expo push token.');
     }
-  };
+  } catch (error) {
+    console.error('Error sending friend request notification:', error);
+  }
+};
+
+// Function to add a friend and send a notification
+const handleAddFriend = async (otherUser: User) => {
+  const currentUser = auth.currentUser;
+  if (!currentUser) return;
+
+  try {
+    // Update other user's "friends" field
+    const otherUserRef = doc(db, 'users', otherUser.uid);
+    await updateDoc(otherUserRef, {
+      [`friends.${currentUser.uid}`]: false, // Mark as not yet accepted (pending)
+    });
+
+    // Mark the friend request as sent locally
+    setAddedFriends((prev) => ({ ...prev, [otherUser.uid]: true }));
+
+    // Send a notification to the friend about the friend request
+    await sendFriendRequestNotification(otherUser.uid);
+  } catch (error) {
+    console.error('Error adding friend and sending notification:', error);
+  }
+};
 
   return (
     <ThemedView style={styles.container}>

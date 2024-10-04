@@ -226,7 +226,7 @@ export default function Profile() {
             },
             body: JSON.stringify(message),
           });
-    
+
           // await Notifications.scheduleNotificationAsync({
           //   content: {
           //     title: "⚠️ Time to IRL ⚠️",
