@@ -9,9 +9,7 @@ import { ThemedView } from "@/components/shared/ThemedView";
 import VideoViewComponent from "@/components/video/ProfileVideoView";
 import { router, useNavigation } from "expo-router";
 import VideoThumbnailComponent from "@/components/video/VideoThumbnailComponent";
-import { ThemedButton } from "@/components/shared/ThemedButton";
 import { signOut } from "firebase/auth";
-import * as Notifications from 'expo-notifications';
 
 export default function Profile() {
   const navigation = useNavigation();
@@ -36,19 +34,6 @@ export default function Profile() {
           setEmail(data.email);
           setName(data.fname + " " + data.lname);
           setHandle(data.username);
-        }
-      }
-    }
-
-    fetchData();
-  }, [navigation]);
-
-  useEffect(() => {
-    async function fetchData() {
-      if (auth.currentUser) {
-        const userRef = await getDoc(doc(db, "users", auth.currentUser.uid));
-        const data = userRef.data();
-        if (data) {
           setImageURL(data.pfp);
           setVideos(data.videos); // Fetch the videos array
         }
@@ -56,7 +41,7 @@ export default function Profile() {
     }
 
     fetchData();
-  }, []);
+  }, [navigation]);
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -121,7 +106,7 @@ export default function Profile() {
   return (
     <ThemedView style={{ flex: 1 }}>
       <ThemedView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: -250, marginBottom: -200 }}>
-        <ThemedView style={{ alignContent: 'center', width: '60%', marginTop: "4%" }}>
+        <ThemedView style={{ alignContent: 'center', width: '60%', marginTop: "5%" }}>
           <ThemedText type="title">{name}</ThemedText>
         </ThemedView>
 
@@ -138,20 +123,22 @@ export default function Profile() {
               {downloadURL && <Image source={{ uri: downloadURL }} style={styles.image} />}
             </View>
           </TouchableOpacity> :
-          <ActivityIndicator size="large" color="#fff" style={{marginTop: "40%"}} />
+          <ActivityIndicator size="large" color="#fff" style={{marginTop: "15%"}} />
         }
         
 
         <ThemedText style={styles.handle} type="subtitle">@{handle}</ThemedText>
 
+        {/* <ThemedText style={{marginTop:"15%"}} type="title">Post to see your videos!</ThemedText> */}
         {/* FlatList to display videos */}
-        {videos ? <ThemedText style={{marginTop:"15%"}} type="title">Post to see your videos!</ThemedText> : <ActivityIndicator size="large" color="#fff" style={{marginTop: "40%"}} />}
-        <FlatList
+          <FlatList
           data={videos}
           renderItem={renderItem}
-          keyExtractor={(item, index) => index.toString()}
+          keyExtractor={(index) => index.toString()}
           contentContainerStyle={styles.videoList}
           style={{width:'100%', marginLeft:"21%", marginTop:"5%"}}
+          ListEmptyComponent={<ActivityIndicator size="large" color="#fff" style={{marginTop: "15%", marginRight:"21%"}} />}
+          initialNumToRender={1}
         />
         
       </ThemedView>
