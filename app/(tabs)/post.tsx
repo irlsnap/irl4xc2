@@ -79,7 +79,6 @@ export default function Post() {
         setTimer((prev) => prev - 1);
       }, 1000);
     } else if (timer === 0) {
-      setTimer(25);
       stopRecording();
     }
 
@@ -87,6 +86,7 @@ export default function Post() {
   }, [isRecording, timer]);
 
   const stopRecording = async () => {
+    setTimer(25);
     await cameraRef.current?.stopRecording();
     setIsRecording(false);
   }
@@ -371,7 +371,7 @@ export default function Post() {
 const styles = StyleSheet.create({
   timerContainer: {
     position: "absolute",
-    top: 50,
+    top: "10%",
     left: "50%",
     transform: [{ translateX: -25 }],
     zIndex: 10,

@@ -12,18 +12,19 @@ import Animated, {
 } from "react-native-reanimated";
 import { auth, db, storage } from "../../app/firebaseConfig";
 import { ProgressBar } from "react-native-paper";
+import { requestMediaLibraryPermissionsAsync } from "expo-image-picker";
 
 interface VideoViewProps {
   video: string;
-  setVideo: React.Dispatch<React.SetStateAction<string>>;
+  setModal: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
-export default function VideoViewComponent({ video, setVideo }: VideoViewProps) {
+export default function VideoViewComponent({ video, setModal }: VideoViewProps) {
   const reff = useRef<VideoView>(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const player = useVideoPlayer(video, (player) => {
     player.loop = true;
-    player.muted = true;
+    player.muted = false;
     player.play();
   });
   const [uid, setUid] = useState("");
@@ -61,6 +62,11 @@ export default function VideoViewComponent({ video, setVideo }: VideoViewProps) 
       // Ensure result is defined before accessing uri
       if (result && result.uri) {
         // Save the file to the media library
+        const mediaLibraryStatus = await requestMediaLibraryPermissionsAsync();
+        if (!mediaLibraryStatus.granted) {
+          Alert.alert("Error", "Media Library permission is required.");
+          return false;
+        }
         const asset = await MediaLibrary.createAssetAsync(result.uri);
         Alert.alert("✅ Video saved!");
       } else {
@@ -95,7 +101,7 @@ export default function VideoViewComponent({ video, setVideo }: VideoViewProps) 
         }}
       >
         <IconButton
-          onPress={() => setVideo("")}
+          onPress={() => setModal(false)}
           iosName={"xmark"}
           androidName="close"
         />
@@ -132,8 +138,7 @@ export default function VideoViewComponent({ video, setVideo }: VideoViewProps) 
           height: "100%",
         }}
         player={player}
-        allowsFullscreen
-        nativeControls={true}
+        nativeControls={false}
       />
     </Animated.View>
   );

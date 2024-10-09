@@ -77,7 +77,6 @@ export default function Reaction() {
         setTimer((prev) => prev - 1);
       }, 1000);
     } else if (timer === 0) {
-      setTimer(10);
       stopRecording();
     }
 
@@ -85,6 +84,7 @@ export default function Reaction() {
   }, [isRecording, timer]);
 
   const stopRecording = async () => {
+    setTimer(10);
     await cameraRef.current?.stopRecording();
     setIsRecording(false);
   }

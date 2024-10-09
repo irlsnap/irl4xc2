@@ -26,7 +26,7 @@ export default function ReactionViewComponent({ video, setVideo, friendUID }: Vi
   const [isPlaying, setIsPlaying] = useState(true);
   const player = useVideoPlayer(video, (player) => {
     player.loop = true;
-    player.muted = true;
+    player.muted = false;
     player.play();
   });
   const [progress, setProgress] = useState(0);

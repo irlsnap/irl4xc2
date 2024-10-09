@@ -187,6 +187,7 @@ function FeedScreen() {
           horizontal={false}
           showsVerticalScrollIndicator={false}
           viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+          initialNumToRender={1}
         /> : <ComingSoonPage text='No Posts yet. Add more friends!' />
       }
 

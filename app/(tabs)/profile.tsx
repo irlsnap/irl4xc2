@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList, ActivityIndicator } from "react-native";
+import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList, ActivityIndicator, Modal } from "react-native";
 import * as ImagePicker from 'expo-image-picker'; 
 import { auth, db, storage } from "../firebaseConfig";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -21,6 +21,7 @@ export default function Profile() {
   const [downloadURL, setImageURL] = useState("");
   const [videos, setVideos] = useState<string[]>([]); // State to store video URLs
   const [video, setVideo] = useState<string>("");
+  const [modal, setModal] = useState(false);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -97,15 +98,23 @@ export default function Profile() {
 
   // Render item for FlatList
   const renderItem = ({ item }: { item: string }) => (
-    <TouchableOpacity onPress={() => {setVideo(item)}} style={{marginBottom:'5%'}}>
+    <TouchableOpacity onPress={() => {setVideo(item); setModal(true)}} style={{marginBottom:'5%'}}>
       <VideoThumbnailComponent videoUri={item} />
     </TouchableOpacity>
   );
 
-  if (video) return <VideoViewComponent video={video} setVideo={setVideo} />;
   return (
     <ThemedView style={{ flex: 1 }}>
       <ThemedView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: -250, marginBottom: -200 }}>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modal}
+        onRequestClose={() => {
+          setModal(!modal);
+        }}>
+          <VideoViewComponent video={video} setModal={setModal} />
+      </Modal>
         <ThemedView style={{ alignContent: 'center', width: '60%', marginTop: "5%" }}>
           <ThemedText type="title">{name}</ThemedText>
         </ThemedView>
