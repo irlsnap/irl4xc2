@@ -112,7 +112,7 @@ export default function Signup() {
 
       <ThemedText type="grayed" style={{marginTop: "8%"}}>
         Have an account?   
-        <Link style={styles.forgotPassword} href={{ pathname: '/auth/login', params: { name: 'Bacon' } }}>
+        <Link style={styles.forgotPassword} href={{ pathname: '/auth/login', params: {} }}>
           <ThemedText type="link"> Log in.</ThemedText>
         </Link>
       </ThemedText>

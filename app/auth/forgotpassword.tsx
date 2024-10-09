@@ -7,7 +7,7 @@ import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-na
 import { Divider } from '@rneui/themed';
 import { useRouter } from 'expo-router';
 import {auth} from '@/app/firebaseConfig';
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 import registerForPushNotificationsAsync from "../notifs";
 
 export default function Login() {
@@ -19,7 +19,6 @@ export default function Login() {
   }, [navigation]);
 
   const [email, onChangeEmail] = useState('');
-  const [password, onChangePassword] = useState('');
 
   return (
     <ThemedView style={{flex:1, alignItems:'center', justifyContent:'center'}}>
@@ -29,28 +28,24 @@ export default function Login() {
         />
       
       <ThemedTextInput text={email} onChangeText={onChangeEmail} placeholder="Email"></ThemedTextInput>
-      <ThemedTextInput text={password} onChangeText={onChangePassword} placeholder="Password" type="password"></ThemedTextInput>
-
-      <Link style={styles.forgotPassword} href={{ pathname: '/auth/forgotpassword', params: { name: 'Bacon' } }}>
-        <ThemedText type="link">Forgot Password?</ThemedText>
-      </Link>
 
       <TouchableOpacity 
         onPress={() => {
-          if (email && password) {
-            signInWithEmailAndPassword(auth, email, password)
-            .then(async (userCredential) => {
-              // Signed in 
-              await registerForPushNotificationsAsync();
-              const user = userCredential.user;
-              router.navigate("/(tabs)/")
-            })
+          if (email) {
+            sendPasswordResetEmail(auth, email)
+            .then(() => {
+                Alert.alert("Password Reset Link sent to email!", "", [
+                    {
+                      text: 'OK',
+                      onPress: () => router.back(),
+                    }
+                  ])
+                })
             .catch((error) => {
               const errorCode = error.code;
               const errorMessage = error.message;
               if (errorCode == "auth/invalid-email") Alert.alert("Invalid Email");
-              if (errorCode == "auth/invalid-credential") Alert.alert("Incorrect Email or Password");
-              if (errorCode == "auth/user-not-found") Alert.alert("User not found");
+              if (errorCode == "auth/missing-email") Alert.alert("Missing email");
             });
           }
           else{
@@ -64,7 +59,7 @@ export default function Login() {
           borderRadius: 6,
           marginTop: "5%",
         }}>
-          <ThemedText style={{marginLeft:"43%"}}>Log in</ThemedText>
+          <ThemedText style={{marginLeft:"35%"}}>Send Reset Email</ThemedText>
         </TouchableOpacity>
       
 
@@ -75,9 +70,9 @@ export default function Login() {
       </View>
 
       <ThemedText type="grayed" style={{marginTop: "15%"}}>
-        Don't have an account?   
-        <Link style={styles.forgotPassword} href={{ pathname: '/auth/signup', params: { name: 'Bacon' } }}>
-          <ThemedText type="link"> Sign up.</ThemedText>
+        Remember your account info?   
+        <Link style={styles.forgotPassword} href={{ pathname: '/auth/login', params: {} }}>
+          <ThemedText type="link"> Go back to Log In.</ThemedText>
         </Link>
       </ThemedText>
 

@@ -22,6 +22,7 @@ export function ThemedText({
     'Zoi-Regular': require('@/assets/fonts/Zoi-Regular.otf'),
   });
 
+  if(fontsLoaded)
   return (
     <Text
       adjustsFontSizeToFit={true}
