@@ -15,6 +15,7 @@ import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { Animated } from 'react-native';
 import { useRecentPicksPersistence } from 'rn-emoji-keyboard'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import Leaderboard from '../misc/leaderboard';
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -41,7 +42,7 @@ export default function MyTabs() {
           width: '100%'
         },
       }}>
-      <Tab.Screen name="leaderboard" component={ComingSoonPage} />
+      <Tab.Screen name="leaderboard" component={Leaderboard} />
       <Tab.Screen name="friends" component={FeedScreen} />
       <Tab.Screen name="spotlight" component={ComingSoonPage} />
     </Tab.Navigator>
@@ -377,10 +378,13 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
           /> : <View></View>}
 
           {/* Profile Picture and Name */}
-          <TouchableOpacity style={styles.profileContainer} onPress={() => router.push({
-            pathname: '/misc/friendprofile',
-            params: { friendUid: item.uid }, // Pass the friend's UID here
-          })}>
+          <TouchableOpacity style={styles.profileContainer} onPress={() => {
+            video.current?.pauseAsync();
+            router.push({
+              pathname: '/misc/friendprofile',
+              params: { friendUid: item.uid }, // Pass the friend's UID here
+            })}
+          }>
             {item.pfp ? (
               <Image source={{ uri: item.pfp }} style={styles.profileImage} />
             ) : (

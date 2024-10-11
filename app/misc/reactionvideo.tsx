@@ -28,6 +28,7 @@ import { auth, db } from '../firebaseConfig';
 import ComingSoonPage from '../misc/comingsoon';
 import { format, isToday, differenceInSeconds } from 'date-fns'; // Import for time comparison
 import ReactionViewComponent from "@/components/video/ReactionView";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function Reaction() {
   const { isFirstTime, isLoading } = useFirstTimeCamera();
@@ -209,6 +210,7 @@ export default function Reaction() {
         video={true}
         audio={true}
       />
+      <Ionicons name="caret-back" size={30} color="white" onPress={() => router.back()} style={styles.back} />
       <View style={styles.timerContainer}>
         <ThemedText style={styles.timerText}>{timer}s</ThemedText>
       </View>
@@ -229,13 +231,18 @@ export default function Reaction() {
 const styles = StyleSheet.create({
   timerContainer: {
     position: "absolute",
-    top: 50,
+    top: "7%",
     left: "50%",
     transform: [{ translateX: -25 }],
     zIndex: 10,
     backgroundColor: "rgba(0,0,0,0.5)",
     padding: 10,
     borderRadius: 10,
+  },
+  back: {
+    top: "8%",
+    left: "5%",
+    position: 'absolute',
   },
   timerText: {
     color: "#fff",
