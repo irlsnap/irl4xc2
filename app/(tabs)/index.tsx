@@ -1,4 +1,4 @@
-import { View, Dimensions, FlatList, StyleSheet, Pressable, Image, Text } from 'react-native';
+import { View, Dimensions, FlatList, StyleSheet, Pressable, Image, Text, TouchableOpacity } from 'react-native';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import React, { useEffect, useRef, useState } from 'react';
 import Carousel from 'react-native-reanimated-carousel';
@@ -11,7 +11,7 @@ import { router } from 'expo-router';
 import { useFonts } from 'expo-font';
 import { AnimatedEmoji } from 'react-native-animated-emoji';
 import EmojiPicker, { tr, type EmojiType } from 'rn-emoji-keyboard'
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import { Animated } from 'react-native';
 import { useRecentPicksPersistence } from 'rn-emoji-keyboard'
 import AsyncStorage from '@react-native-async-storage/async-storage'
@@ -320,7 +320,7 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
               backgroundColor: 'transparent',
               padding: 10,
               borderRadius: 30,}}>
-            <MaterialCommunityIcons name={"cards-heart-outline"} size={32} color={"red"}  onPress={() => setIsOpen(true)}/>
+              <FontAwesome6 name="heart-circle-plus" size={32} color="red" onPress={() => setIsOpen(true)}/>
           </Animated.View>: null}
           
           {/* if current video playing */}
@@ -377,7 +377,10 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
           /> : <View></View>}
 
           {/* Profile Picture and Name */}
-          <View style={styles.profileContainer}>
+          <TouchableOpacity style={styles.profileContainer} onPress={() => router.push({
+            pathname: '/misc/friendprofile',
+            params: { friendUid: item.uid }, // Pass the friend's UID here
+          })}>
             {item.pfp ? (
               <Image source={{ uri: item.pfp }} style={styles.profileImage} />
             ) : (
@@ -386,7 +389,7 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
               </View>
             )}
             <Text style={styles.profileName}>{item.name}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </Pressable>
     </View>
