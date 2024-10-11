@@ -1,53 +1,92 @@
 import React, { useEffect, useState } from "react";
 import { View, Button, Text, TouchableOpacity, FlatList, StyleSheet } from "react-native";
 import { router, useNavigation } from "expo-router";
-import { collection, query, where, getDocs, doc, updateDoc, getDoc } from "firebase/firestore";
-import { db, auth } from "@/app/firebaseConfig"; // Firestore config
+import { collection, query, getDocs, doc, getDoc, updateDoc, where } from "firebase/firestore";
+import { db, auth } from "@/app/firebaseConfig";
 import { ThemedView } from "@/components/shared/ThemedView";
 import { ThemedTextInput } from "@/components/shared/ThemedTextInput";
-import { Ionicons } from "@expo/vector-icons"; // Import icons from Expo
+import { Ionicons } from "@expo/vector-icons";
 
 interface User {
   uid: string;
   username: string;
   fname: string;
   lname: string;
+  friends?: { [uid: string]: boolean }; // Optional 'friends' field
+  friendsCount: number; // Include friends count in the interface
 }
 
 export default function Search() {
   const navigation = useNavigation();
-  const currentUser = auth.currentUser; // Get the currently logged-in user
+  const currentUser = auth.currentUser;
   const [searchTerm, setSearchTerm] = useState<string>(""); // Input value for search
   const [users, setUsers] = useState<User[]>([]); // Fetched users
-  const [addedFriends, setAddedFriends] = useState<{ [uid: string]: boolean }>({}); // To track added friends
+  const [addedFriends, setAddedFriends] = useState<{ [uid: string]: boolean }>({}); // Track added friends
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
+
+    // Fetch all users when the component mounts
+    fetchAllUsers();
   }, [navigation]);
 
-  // Function to fetch users from Firestore based on search term
+// Function to fetch all users and their friend counts
+const fetchAllUsers = async () => {
+  if (!currentUser) return;
+
+  const userList: User[] = [];
+  const seen = new Set(); // To avoid duplicate users
+
+  // Get current user's friends from Firestore
+  const friendsRef = doc(db, "users", currentUser.uid);
+  const friendsDoc = await getDoc(friendsRef);
+  const friendsData = friendsDoc.exists() ? friendsDoc.data().friends || {} : {};
+
+  // Helper function to check if a user is already a friend
+  const isFriend = (uid: string) => friendsData[uid] === true;
+
+  // Query to fetch all users
+  const allUsersQuery = query(collection(db, "users"));
+  const userSnapshot = await getDocs(allUsersQuery);
+
+  // For each user, retrieve their data and friend count, excluding friends and current user
+  for (const userDoc of userSnapshot.docs) {
+    const userData = userDoc.data() as User;
+    const friendsCount = userData.friends ? Object.keys(userData.friends).length : 0;
+
+    if (!seen.has(userDoc.id) && !isFriend(userDoc.id) && userDoc.id !== currentUser.uid) {
+      seen.add(userDoc.id); // Track seen users
+      userList.push({
+        uid: userDoc.id,
+        username: userData.username,
+        fname: userData.fname,
+        lname: userData.lname,
+        friendsCount, // Include the friend count
+      });
+    }
+  }
+
+  setUsers(userList); // Update the state with filtered users
+};
+
+  // Function to search users based on the search term
   const searchUsers = async () => {
     if (!searchTerm.trim()) return; // Avoid empty searches
-
     if (!currentUser) return;
 
     const userList: User[] = [];
 
-    // Search by username
+    // Queries to search users by username, first name, and last name
     const usernameQuery = query(
       collection(db, "users"),
       where("username", ">=", searchTerm),
       where("username", "<=", searchTerm + "\uf8ff")
     );
-
-    // Search by first name
     const fnameQuery = query(
       collection(db, "users"),
       where("fname", ">=", searchTerm),
       where("fname", "<=", searchTerm + "\uf8ff")
     );
-
-    // Search by last name
     const lnameQuery = query(
       collection(db, "users"),
       where("lname", ">=", searchTerm),
@@ -78,10 +117,10 @@ export default function Search() {
           username: userData.username,
           fname: userData.fname,
           lname: userData.lname,
+          friendsCount: Object.keys(userData.friends || {}).length, // Safely count friends
         });
       }
     });
-
     fnameSnapshot.forEach((doc) => {
       const userData = doc.data() as User;
       if (!seen.has(doc.id) && !isFriend(doc.id)) {
@@ -91,10 +130,10 @@ export default function Search() {
           username: userData.username,
           fname: userData.fname,
           lname: userData.lname,
+          friendsCount: Object.keys(userData.friends || {}).length, // Safely count friends
         });
       }
     });
-
     lnameSnapshot.forEach((doc) => {
       const userData = doc.data() as User;
       if (!seen.has(doc.id) && !isFriend(doc.id)) {
@@ -104,6 +143,7 @@ export default function Search() {
           username: userData.username,
           fname: userData.fname,
           lname: userData.lname,
+          friendsCount: Object.keys(userData.friends || {}).length, // Safely count friends
         });
       }
     });
@@ -111,7 +151,7 @@ export default function Search() {
     setUsers(userList);
   };
 
-  // Assume that 'getFriendToken' is a function that fetches the friend's notification token from Firestore
+    // Assume that 'getFriendToken' is a function that fetches the friend's notification token from Firestore
 const getFriendToken = async (friendUid: string) => {
   const friendDoc = doc(db, 'users', friendUid);
   const friendSnapshot = await getDoc(friendDoc);
@@ -179,10 +219,10 @@ const handleAddFriend = async (otherUser: User) => {
     <ThemedView style={styles.container}>
       {/* Header Section */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/misc/friends')}>
+        <TouchableOpacity onPress={() => router.push("/misc/friends")}>
           <Ionicons name="people-outline" size={28} color="white" />
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => router.push('/misc/friendrequests')} style={styles.friendRequests}>
+        <TouchableOpacity onPress={() => router.push("/misc/friendrequests")} style={styles.friendRequests}>
           <Text style={styles.friendRequestsText}>Friend Requests</Text>
           <Ionicons name="chevron-forward-outline" size={20} color="white" />
         </TouchableOpacity>
@@ -202,12 +242,13 @@ const handleAddFriend = async (otherUser: User) => {
       {/* Results */}
       {users.length > 0 ? (
         <FlatList
+          initialNumToRender={10}
           data={users}
           keyExtractor={(item) => item.uid}
           renderItem={({ item }) => (
             <View style={styles.userContainer}>
               <Text style={styles.userName}>
-                {item.fname} {item.lname} (@{item.username})
+                {item.fname} {item.lname} (@{item.username}) - {item.friendsCount} friends
               </Text>
               <TouchableOpacity
                 style={[
@@ -215,7 +256,7 @@ const handleAddFriend = async (otherUser: User) => {
                   addedFriends[item.uid] && styles.addedFriendButton,
                 ]}
                 onPress={() => handleAddFriend(item)}
-                disabled={addedFriends[item.uid]} // Disable the button if already added
+                disabled={addedFriends[item.uid]}
               >
                 <Text style={styles.addFriendText}>
                   {addedFriends[item.uid] ? "Request Sent" : "Add Friend"}
@@ -272,6 +313,7 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16,
     color: "#fff",
+    width: '70%'
   },
   addFriendButton: {
     backgroundColor: "#3797EF",

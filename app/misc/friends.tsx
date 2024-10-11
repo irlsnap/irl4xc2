@@ -11,6 +11,8 @@ interface User {
   username: string;
   fname: string;
   lname: string;
+  friends?: { [uid: string]: boolean }; // Optional 'friends' field
+  friendsCount: number; // Include friends count in the interface
 }
 
 export default function Friends() {
@@ -39,11 +41,13 @@ export default function Friends() {
           const friendDoc = await getDoc(doc(db, "users", uid));
           if (friendDoc.exists()) {
             const friendData = friendDoc.data() as User;
+            const friendsCount = friendData.friends ? Object.keys(friendData.friends).length : 0;
             friendsList.push({
               uid: friendDoc.id,
               username: friendData.username,
               fname: friendData.fname,
               lname: friendData.lname,
+              friendsCount, // Include the friend count
             });
           }
         }
@@ -57,7 +61,7 @@ export default function Friends() {
   const renderFriendItem = ({ item }: { item: User }) => (
     <View style={styles.friendContainer}>
       <Text style={styles.friendName}>
-        {item.fname} {item.lname} (@{item.username})
+        {item.fname} {item.lname} (@{item.username}) - {item.friendsCount} friends
       </Text>
     </View>
   );

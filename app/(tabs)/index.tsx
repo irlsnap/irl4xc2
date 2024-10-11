@@ -3,12 +3,18 @@ import { Video, ResizeMode, Audio } from 'expo-av';
 import React, { useEffect, useRef, useState } from 'react';
 import Carousel from 'react-native-reanimated-carousel';
 import ComingSoonPage from '../misc/comingsoon';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { arrayUnion, doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebaseConfig';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useFonts } from 'expo-font';
+import { AnimatedEmoji } from 'react-native-animated-emoji';
+import EmojiPicker, { tr, type EmojiType } from 'rn-emoji-keyboard'
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { Animated } from 'react-native';
+import { useRecentPicksPersistence } from 'rn-emoji-keyboard'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 
 const Tab = createMaterialTopTabNavigator();
 
@@ -104,7 +110,7 @@ function FeedScreen() {
         // Filter friends who are accepted
         const friendUIDs = Object.keys(friends).filter((uid) => friends[uid] === true);
   
-        const allVideos: { uid: string; post: string; name: string; pfp: string, reactions: string[] }[] = [];
+        const allVideos: { uid: string; post: string; name: string; pfp: string, reactions: string[], emojis: string[], emojiUids: string[]}[] = [];
   
         // Add the current user's video to the feed first
         allVideos.push({
@@ -112,7 +118,9 @@ function FeedScreen() {
           post: userPost,
           name: userSnapshot.data()?.fname + " " + userSnapshot.data()?.lname || 'Me',
           pfp: userSnapshot.data()?.pfp || '',
-          reactions: userSnapshot.data()?.reactions || []
+          reactions: userSnapshot.data()?.reactions || [],
+          emojis: userSnapshot.data()?.emojis || [],
+          emojiUids: userSnapshot.data()?.emojiUids || []
         });
   
         // Fetch posts (videos) from friends
@@ -124,6 +132,8 @@ function FeedScreen() {
               const friendPosts = friendSnapshot.data()?.post || '';
               const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown';
               const friendPfp = friendSnapshot.data()?.pfp || '';
+              const friendEmojis = friendSnapshot.data()?.emojis || [];
+              const friendEmojiUids = friendSnapshot.data()?.emojiUids || [];
               const friendReactions = friendSnapshot.data()?.reactions || [];
               const filteredReactions = friendReactions.filter((reaction: string) => reaction !== '');
   
@@ -133,7 +143,9 @@ function FeedScreen() {
                   post: friendPosts,
                   name: friendName,
                   pfp: friendPfp,
-                  reactions: [...filteredReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"] // Add the hardcoded video for friends
+                  reactions: [...filteredReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"], // Add the hardcoded video for friends
+                  emojis: friendEmojis,
+                  emojiUids: friendEmojiUids
                 };
   
                 allVideos.push(updatedFriendData);
@@ -153,7 +165,7 @@ function FeedScreen() {
     }
   };  
 
-  const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string; reactions: string[] }[]>([]);
+  const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string; reactions: string[], emojis: string[], emojiUids: string[] }[]>([]);
 
   const [currentViewableItemIndex, setCurrentViewableItemIndex] = useState(0);
   const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 }
@@ -195,13 +207,23 @@ function FeedScreen() {
   );
 }
 
-const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, post: string; name: string; pfp: string; reactions: string[] } }) => {
+const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, post: string; name: string; pfp: string; reactions: string[], emojis: string[], emojiUids: string[] } }) => {
   const video = React.useRef<Video | null>(null);
   const width = Dimensions.get('window').width;
   const [status, setStatus] = useState<any>(null);
   const [currentViewableMojiIndex, setCurrentViewableMojiIndex] = useState(0);
+  const [isOpen, setIsOpen] = React.useState<boolean>(false)
+  const [sendEmoji, setSendEmoji] = React.useState<boolean>(false)
+  const [showEmoji, setShowEmoji] = React.useState<boolean>(false)
+  const [emoji, setEmoji] = React.useState<string>("")
+  const [scaleValue] = useState(new Animated.Value(1));
 
   const i = item;
+
+  useRecentPicksPersistence({
+    initialization: () => AsyncStorage.getItem("emoji-saved").then((item) => JSON.parse(item || '[]')),
+    onStateChange: (next) => AsyncStorage.setItem("emoji-saved", JSON.stringify(next)),
+  })
 
   useEffect(() => {
     if (!video.current) return;
@@ -213,6 +235,52 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
       video.current.setPositionAsync(0)
     }
   }, [shouldPlay])
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleValue, {
+          toValue: 1.2,
+          duration: 500,
+          useNativeDriver: true
+        }),
+        Animated.timing(scaleValue, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true
+        })
+      ])
+    );
+
+    animation.start();
+
+    return () => animation.stop();
+  }, []);
+
+  useEffect(() => {
+    if (auth.currentUser) {
+      if (!item.emojiUids.includes(auth.currentUser.uid)) {
+        setShowEmoji(true)
+      }
+    }
+  }, []);
+
+  const handlePick = async (emojiObject: EmojiType) => {
+    setShowEmoji(false)
+    setEmoji(emojiObject.emoji)
+    setSendEmoji(true)
+    await updateDoc(doc(db, "users", item.uid), {
+      emojis: arrayUnion(emojiObject.emoji), // Add to 'emojis' field (array)
+      emojiUids: arrayUnion(auth?.currentUser?.uid), // Add to 'emojis' field (array)
+    });
+    /* example emojiObject = {
+        "emoji": "❤️",
+        "name": "red heart",
+        "slug": "red_heart",
+        "unicode_version": "0.6",
+      }
+    */
+  }
 
   return (
     <View>
@@ -243,6 +311,70 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
             useNativeControls={false}
             onPlaybackStatusUpdate={status => setStatus(() => status)}
           />
+
+          {showEmoji ? <Animated.View style={{ transform: [{ scale: scaleValue }], position: 'absolute',
+              bottom: "10%",
+              right: "2%",
+              flexDirection: 'row',
+              alignItems: 'center',
+              backgroundColor: 'transparent',
+              padding: 10,
+              borderRadius: 30,}}>
+            <MaterialCommunityIcons name={"cards-heart-outline"} size={32} color={"red"}  onPress={() => setIsOpen(true)}/>
+          </Animated.View>: null}
+          
+          {/* if current video playing */}
+          {shouldPlay ? item.emojis.map((emoji, index) => {
+            if (index > 10) {
+              return
+            }
+            let bt: number;
+            if (index < 5) {
+              bt = index*75 + 200
+            }
+            else {
+              bt = 600 - (index-5)*75
+            }
+
+            return (
+              <AnimatedEmoji
+                index={'emoji.key'} // index to identity emoji component
+                style={{ bottom: bt }} // start bottom position
+                name={emoji} // emoji name
+                size={30} // font size
+                duration={4000} // ms
+                // onAnimationCompleted={this.onAnimationCompleted} // completion handler
+              />
+            )}) : <View></View>}
+
+          <EmojiPicker onEmojiSelected={handlePick} open={isOpen} onClose={() => {setIsOpen(false)}} enableRecentlyUsed enableSearchBar theme={{
+            backdrop: '#16161888',
+            knob: 'red',
+            container: '#282829',
+            header: '#fff',
+            skinTonesContainer: '#252427',
+            category: {
+              icon: 'red',
+              iconActive: '#fff',
+              container: '#252427',
+              containerActive: 'red',
+            },
+            search: {
+              text: '#fff',
+              placeholder: '#fff'
+            }
+          }} 
+          categoryOrder={["recently_used", "smileys_emotion", "people_body", "animals_nature", "food_drink", "travel_places", "activities", "symbols", "flags" ,"search"]}
+          disabledCategories={["objects"]}/>
+
+          {sendEmoji ? <AnimatedEmoji
+            index={'emoji.key'} // index to identity emoji component
+            style={{ bottom: 500 }} // start bottom position
+            name={emoji} // emoji name
+            size={30} // font size
+            duration={4000} // ms
+            onAnimationCompleted={() => setSendEmoji(false)} // completion handler
+          /> : <View></View>}
 
           {/* Profile Picture and Name */}
           <View style={styles.profileContainer}>
@@ -336,6 +468,7 @@ const RealMoji = ({ item, shouldPlay, friendUid }: { shouldPlay: boolean; item: 
           resizeMode={ResizeMode.COVER}
           useNativeControls={false}
           onPlaybackStatusUpdate={emojisStatus => setEmojisStatus(() => emojisStatus)}
+          posterSource={require('@/assets/images/app_logo_transparent.png')}
         />
       </Pressable>
     </View>
