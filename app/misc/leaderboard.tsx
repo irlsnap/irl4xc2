@@ -66,31 +66,33 @@ export default function Leaderboard() {
         }
         return b.streaks - a.streaks; // Compare streaks primarily
       });
-
+    
     setUsers(sortedList);
   };
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title" style={{marginTop: "15%", marginBottom: '5%'}}>Leaderboard</ThemedText>
+      <ThemedText type="title" style={{marginTop: "35%"}}>Leaderboard</ThemedText>
       <FlatList
         data={users}
         keyExtractor={(item) => item.uid}
+        initialNumToRender={8}
+        showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
           <View style={styles.userContainer}>
             <View style={styles.userInfo}>
-              <Text style={styles.username}>@{item.username}</Text>
-              <Text style={styles.streaks}>
+              <ThemedText type="subtitle">@{item.username}</ThemedText>
+              <ThemedText type="subtitle">
                 🔥 {item.streaks} {/* Display streak count with fire emoji */}
-              </Text>
+              </ThemedText>
             </View>
             <View style={styles.statsContainer}>
-              <Text style={styles.reactions}>
+              <ThemedText type="defaultSemiBold">
                 Reactions: {item.reactionUids.length} {/* Length of reactionUids */}
-              </Text>
-              <Text style={styles.emojis}>
+              </ThemedText>
+              <ThemedText type="defaultSemiBold">
                 Emojis: {item.emojis.length} {/* Length of emojis */}
-              </Text>
+              </ThemedText>
             </View>
           </View>
         )}
@@ -144,6 +146,6 @@ const styles = StyleSheet.create({
     },
     listContainer: {
       marginTop: "15%",
-      paddingBottom: "5%",
+      paddingBottom: "50%",
     },
   });  
