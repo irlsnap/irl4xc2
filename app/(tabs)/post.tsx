@@ -1,4 +1,9 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  useRef,
+} from "react";
 import {
   Alert,
   Button,
@@ -6,6 +11,13 @@ import {
   SafeAreaView,
   StyleSheet,
   View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  Animated,
+  Easing,
+  PanResponder,
 } from "react-native";
 import { Camera, useCameraDevice } from "react-native-vision-camera";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -16,136 +28,313 @@ import { SymbolView } from "expo-symbols";
 import { Colors } from "@/constants/Colors";
 import { HelloWave } from "@/components/shared/HelloWave";
 import VideoViewComponent from "@/components/video/VideoView";
-import CameraButton from "@/components/camera/CameraButton";
 import CameraTools from "@/components/camera/CameraTools";
 import { router } from "expo-router";
 import { useFirstTimeCamera } from "@/hooks/useFirstTimeCamera";
 import { useIsFocused, useFocusEffect } from "@react-navigation/native";
 import { useAppState } from "@react-native-community/hooks";
 import { requestMediaLibraryPermissionsAsync } from "expo-image-picker";
-import { collection, doc, getDoc, getDocs, limit, orderBy, query } from "firebase/firestore";  // Firestore imports
-import { auth, db } from '../firebaseConfig';
-import ComingSoonPage from '../misc/comingsoon';
-import { format, isToday, differenceInSeconds } from 'date-fns'; // Import for time comparison
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+} from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import ComingSoonPage from "../misc/comingsoon";
+import { format, isToday, differenceInSeconds } from "date-fns";
+import Svg, { Circle } from "react-native-svg";
+
+/** For the pink ring around the record button (30s limit). */
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/** Single text bubble item, draggable */
+function DraggableTextItem({
+  id,
+  text,
+  onTextLongPress,
+  pan,
+}: {
+  id: string;
+  text: string;
+  onTextLongPress: (id: string) => void;
+  pan: Animated.ValueXY;
+}) {
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderMove: Animated.event(
+        [null, { dx: pan.x, dy: pan.y }],
+        { useNativeDriver: false }
+      ),
+      onPanResponderRelease: () => {
+        // “lift up” the new position so next drag starts from there
+        pan.extractOffset();
+      },
+    })
+  ).current;
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        overlayStyles.textBubble,
+        {
+          transform: [{ translateX: pan.x }, { translateY: pan.y }],
+        },
+      ]}
+    >
+      <Text
+        style={overlayStyles.textBubbleText}
+        onLongPress={() => onTextLongPress(id)}
+      >
+        {text}
+      </Text>
+    </Animated.View>
+  );
+}
 
 export default function Post() {
+  /** 1) “First-time camera” logic **/
   const { isFirstTime, isLoading } = useFirstTimeCamera();
+
+  /** 2) Camera references **/
   const cameraRef = useRef<Camera>(null);
+
+  // For checking if we’re on screen & app is active
   const isFocused = useIsFocused();
   const appState = useAppState();
   const isActive = isFocused && appState === "active";
-  const [cameraTorch, setCameraTorch] = useState<boolean>(false);
-  const [cameraFacing, setCameraFacing] = useState<"front" | "back">(
-    "back"
-  );
-  const [isRecording, setIsRecording] = useState<boolean>(false);
-  const [video, setVideo] = useState<string>("");
-  const [hasPostedToday, setHasPostedToday] = useState<boolean>(false); // Track if user has posted today
-  const [timeLeft, setTimeLeft] = useState<number | null>(null); // Timer countdown
-  const [postingStatus, setPostingStatus] = useState<string>(""); // Posting Late or timer
-  const [timer, setTimer] = useState<number>(25); // Timer state set to 25 seconds
 
-  const device = useCameraDevice(cameraFacing, 
-    {
-    physicalDevices: [
-      'ultra-wide-angle-camera'
-    ]}
-  );
+  /** 3) 2-Minute “BeReal” style local countdown **/
+  const [timeLeftForNotification, setTimeLeftForNotification] = useState(120);
+  useEffect(() => {
+    let notifyInterval: NodeJS.Timeout | null = null;
+    notifyInterval = setInterval(() => {
+      setTimeLeftForNotification((prev) => {
+        if (prev <= 1) {
+          clearInterval(notifyInterval!);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-  function convertToDate(dateString: string) {
-    const [month, day, year] = dateString.split('/').map(Number);
-    return new Date(year, month - 1, day); 
-  }
+    return () => {
+      if (notifyInterval) clearInterval(notifyInterval);
+    };
+  }, []);
 
-  const parseTime = (timeString: string) => {
-    const [time, modifier] = timeString.split(' '); // Split time and AM/PM
-    let [hours, minutes, seconds] = time.split(":").map(Number); // Split hours, minutes, seconds
-  
-    if (modifier === "PM" && hours < 12) {
-      hours += 12; // Convert PM hours to 24-hour format
-    } else if (modifier === "AM" && hours === 12) {
-      hours = 0; // Handle midnight (12 AM)
-    }
-  
-    return { hours, minutes, seconds };
+  /** 4) A 30s ring for actual recording **/
+  const RECORD_LIMIT = 30;
+  const [timeLeftForRecording, setTimeLeftForRecording] = useState(RECORD_LIMIT);
+  const [isRecording, setIsRecording] = useState(false);
+  const [video, setVideo] = useState("");
+
+  // For the pink ring animation
+  const animatedValue = useRef(new Animated.Value(0)).current;
+  const size = 100;
+  const strokeWidth = 6;
+  const center = size / 2;
+  const radius = center - strokeWidth / 2;
+  const circumference = 2 * Math.PI * radius;
+
+  // We'll animate from circumference -> 0
+  const strokeDashoffset = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [circumference, 0],
+  });
+  const ringRotation = `rotate(-90 ${center} ${center})`;
+
+  // Start/stop ring for 30s
+  const startRingAnimation = () => {
+    animatedValue.setValue(0);
+    Animated.timing(animatedValue, {
+      toValue: 1,
+      duration: RECORD_LIMIT * 1000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) stopRecording();
+    });
   };
 
-  // Timer Countdown Effect
+  // Count down from 30
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    if (isRecording && timer > 0) {
-      interval = setInterval(() => {
-        setTimer((prev) => prev - 1);
+    let ringInterval: NodeJS.Timeout | null = null;
+    if (isRecording) {
+      ringInterval = setInterval(() => {
+        setTimeLeftForRecording((prev) => {
+          if (prev <= 1) {
+            stopRecording();
+            return RECORD_LIMIT;
+          }
+          return prev - 1;
+        }, 1000);
       }, 1000);
-    } else if (timer === 0) {
-      stopRecording();
+    } else {
+      setTimeLeftForRecording(RECORD_LIMIT);
     }
-
-    return () => clearInterval(interval);
-  }, [isRecording, timer]);
+    return () => {
+      if (ringInterval) clearInterval(ringInterval);
+    };
+  }, [isRecording]);
 
   const stopRecording = async () => {
-    setTimer(25);
-    await cameraRef.current?.stopRecording();
     setIsRecording(false);
+    animatedValue.stopAnimation();
+    animatedValue.setValue(0);
+    setTimeLeftForRecording(RECORD_LIMIT);
+
+    // Actually stop the camera recording
+    await cameraRef.current?.stopRecording();
+  };
+
+  const toggleRecord = async () => {
+    if (timeLeftForNotification <= 0) {
+      Alert.alert(
+        "Time's up!",
+        "You can’t record now; your 2 min window expired."
+      );
+      return;
+    }
+
+    if (isRecording) {
+      await cameraRef.current?.stopRecording();
+      setIsRecording(false);
+    } else {
+      setIsRecording(true);
+      startRingAnimation();
+
+      cameraRef.current?.startRecording({
+        onRecordingFinished: (vid) => {
+          setVideo(vid.path);
+          console.log("Recorded path:", vid.path);
+        },
+        onRecordingError: (err) => console.error(err),
+      });
+    }
+  };
+
+  /** 5) Torch & camera facing (flip on double-tap) **/
+  const [cameraTorch, setCameraTorch] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"front" | "back">("back");
+  const lastTapRef = useRef<number>(0);
+  const handleTap = () => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      // Double tap => flip
+      setCameraFacing((p) => (p === "back" ? "front" : "back"));
+    }
+    lastTapRef.current = now;
+  };
+
+  /** 6) Draggable text overlays **/
+  const [textOverlays, setTextOverlays] = useState<
+    { id: string; text: string; pan: Animated.ValueXY }[]
+  >([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [showInput, setShowInput] = useState(false);
+  const [tempText, setTempText] = useState("");
+
+  const handleAddText = () => {
+    if (timeLeftForNotification <= 0) {
+      Alert.alert("Time's up!", "You can’t add new text now!");
+      return;
+    }
+    const newId = Math.random().toString(36).slice(2);
+    setTextOverlays((prev) => [
+      ...prev,
+      { id: newId, text: "", pan: new Animated.ValueXY({ x: 100, y: 200 }) },
+    ]);
+    setEditingId(newId);
+    setTempText("");
+    setShowInput(true);
+  };
+  const handleLongPressText = (id: string) => {
+    const bubble = textOverlays.find((b) => b.id === id);
+    if (bubble) {
+      setEditingId(id);
+      setTempText(bubble.text);
+      setShowInput(true);
+    }
+  };
+  const handleDoneEditing = () => {
+    if (editingId) {
+      setTextOverlays((prev) =>
+        prev.map((item) =>
+          item.id === editingId ? { ...item, text: tempText } : item
+        )
+      );
+    }
+    setShowInput(false);
+    setEditingId(null);
+    setTempText("");
+  };
+
+  /** 7) Firestore logic—BUT no daily limit check, so multiple posts allowed **/
+  const [hasPostedToday, setHasPostedToday] = useState(false);
+  const [timeLeftDb, setTimeLeftDb] = useState<number | null>(null);
+  const [postingStatus, setPostingStatus] = useState("");
+
+  // Helper to parse Firestore date/time
+  function convertToDate(dateString: string) {
+    const [month, day, year] = dateString.split("/").map(Number);
+    return new Date(year, month - 1, day);
+  }
+  function parseTime(timeString: string) {
+    const [time, modifier] = timeString.split(" "); // or a different space
+    let [hours, minutes, seconds] = time.split(":").map(Number);
+    if (modifier === "PM" && hours < 12) hours += 12;
+    if (modifier === "AM" && hours === 12) hours = 0;
+    return { hours, minutes, seconds };
   }
 
   useFocusEffect(
-    React.useCallback(() => {
-      // Fetch the user's post status
+    useCallback(() => {
       const checkIfPostedToday = async () => {
         const currentUser = auth.currentUser;
         if (!currentUser) return;
-
         try {
-          const userDoc = doc(db, 'users', currentUser.uid);
+          const userDoc = doc(db, "users", currentUser.uid);
           const userSnapshot = await getDoc(userDoc);
-          const post = userSnapshot.data()?.post || '';
-
-          // If the 'post' field is not an empty string, it means the user has already posted today
-          if (post) {
-            setHasPostedToday(true);
-          } else {
-            setHasPostedToday(false);
-          }
+          const post = userSnapshot.data()?.post || "";
+          // If the user has posted, track it but do NOT block additional posts
+          if (post) setHasPostedToday(true);
+          else setHasPostedToday(false);
         } catch (error) {
           console.error("Error fetching user post data:", error);
         }
       };
 
-      const fetchUser = async () => {
+      const fetchTimeDoc = async () => {
         try {
-          const q = query(collection(db, "time"), orderBy("date", "desc"), limit(1)); // Fetch the latest document
-          const querySnapshot = await getDocs(q);
-    
+          const qTime = query(
+            collection(db, "time"),
+            orderBy("date", "desc"),
+            limit(1)
+          );
+          const querySnapshot = await getDocs(qTime);
           if (!querySnapshot.empty) {
             const latestDoc = querySnapshot.docs[0].data();
-            
-            // Assume your document has fields 'date' and 'time'
-            const postDate = latestDoc.date; // Firestore Timestamp to JS Date
-            const postTime = latestDoc.time; // Time stored in string like 'HH:mm'
-            
-            // Parse the time with AM/PM
+            const postDate = latestDoc.date;
+            const postTime = latestDoc.time;
+
             const { hours, minutes, seconds } = parseTime(postTime);
             const postDateTime = convertToDate(postDate);
-    
-            postDateTime.setHours(hours, minutes, seconds, 0); // Set parsed time to the postDate
-            
+            postDateTime.setHours(hours, minutes, seconds, 0);
+
             const now = new Date();
-    
-            // console.log(hours, minutes, seconds)
-            // console.log(now)
-            
-            // Check if the post is today
+            const timeDifference = -differenceInSeconds(postDateTime, now);
+
             if (isToday(postDateTime)) {
-              const timeDifference = -differenceInSeconds(postDateTime, now);
-              // console.log(timeDifference)
-              
-              // If the current time is within 2 minutes of the post time
               if (timeDifference > 0 && timeDifference <= 120) {
-                setTimeLeft(-timeDifference + 120); // Set timer to postTime + 2 minutes
-                setPostingStatus(""); // Reset posting status
+                setTimeLeftDb(-timeDifference + 120);
+                setPostingStatus("");
               } else {
                 setPostingStatus("Posting Late");
               }
@@ -157,92 +346,81 @@ export default function Post() {
           console.error("Error fetching latest post:", error);
         }
       };
-  
+
       checkIfPostedToday();
-      fetchUser();
-  
-      return () => {
-        // isActive = false;
-      };
-    }, [timeLeft, postingStatus, hasPostedToday])
+      fetchTimeDoc();
+    }, [])
   );
 
-  const onFlipCameraPressed = useCallback(() => {
-    setCameraFacing((p) => (p === 'back' ? 'front' : 'back'));
-  }, []);
-
+  // Countdown for Firestore-based “timeLeftDb”
   useEffect(() => {
-    async function checkPermissions() {
-      const cameraPermission = Camera.getCameraPermissionStatus();
-      if (cameraPermission == "denied") {
-        await Camera.requestCameraPermission();
-      }
-
-      const microphonePermission = Camera.getMicrophonePermissionStatus();
-      if (microphonePermission == "denied") {
-        await Camera.requestMicrophonePermission();
-      }
-    }
-
-    checkPermissions();
-  }, []);
-
-  useEffect(() => {
-    if (timeLeft === null) return;
-    if (timeLeft <= 0) {
+    if (timeLeftDb === null) return;
+    if (timeLeftDb <= 0) {
       setPostingStatus("Time's Up!");
       return;
     }
-
     const timer = setInterval(() => {
-      setTimeLeft((prevTime) => (prevTime === null ? null : prevTime - 1));
+      setTimeLeftDb((prev) => (prev === null ? null : prev - 1));
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeftDb]);
 
   const formatTimeLeft = (seconds: number) => {
     const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds < 10 ? `0${remainingSeconds}` : remainingSeconds}`;
+    const remainingSec = seconds % 60;
+    return `${minutes}:${remainingSec < 10 ? `0${remainingSec}` : remainingSec}`;
   };
 
-  const handleContinue = async () => {
-    const allPermissionsGranted = await requestAllPermissions();
-    if (allPermissionsGranted) {
-      // Navigate to tabs
-      router.replace("/(tabs)/post");
-    } else {
-      Alert.alert("To continue, please provide permissions in settings");
-    }
-  };
+  /** 8) Permissions */
+  useEffect(() => {
+    (async () => {
+      const cameraPermission = await Camera.getCameraPermissionStatus();
+      if (cameraPermission === "denied") {
+        await Camera.requestCameraPermission();
+      }
+      const micPermission = await Camera.getMicrophonePermissionStatus();
+      if (micPermission === "denied") {
+        await Camera.requestMicrophonePermission();
+      }
+    })();
+  }, []);
 
   async function requestAllPermissions() {
     const cameraStatus = await Camera.requestCameraPermission();
-    if (cameraStatus == "denied") {
+    if (cameraStatus === "denied") {
       Alert.alert("Error", "Camera permission is required.");
       return false;
     }
-
-    const microphoneStatus = await Camera.requestMicrophonePermission();
-    if (microphoneStatus == "denied") {
+    const micStatus = await Camera.requestMicrophonePermission();
+    if (micStatus === "denied") {
       Alert.alert("Error", "Microphone permission is required.");
       return false;
     }
-
     const mediaLibraryStatus = await requestMediaLibraryPermissionsAsync();
     if (!mediaLibraryStatus.granted) {
       Alert.alert("Error", "Media Library permission is required.");
       return false;
     }
-
     await AsyncStorage.setItem("hasOpened", "true");
     return true;
   }
 
-  if (isLoading) return <></>;
+  const handleContinue = async () => {
+    const granted = await requestAllPermissions();
+    if (granted) {
+      router.replace("/(tabs)/post");
+    } else {
+      Alert.alert("Please grant permissions in Settings");
+    }
+  };
 
-  if (isFirstTime)
+  /** 9) If device is not ready yet, or if hooking up “firstTimeCamera” logic */
+  const device = useCameraDevice(cameraFacing);
+  if (isLoading) return null;
+  if (!device) return null;
+
+  // Show first-time camera UI
+  if (isFirstTime) {
     return (
       <ParallaxScrollView
         headerBackgroundColor={{
@@ -279,110 +457,204 @@ export default function Post() {
         </ThemedView>
         <ThemedView style={styles.stepContainer}>
           <ThemedText>
-            Congrats on starting your first post! {"\n"}To provide the best
-            experience, this app requires permissions for the following:
+            Welcome! We need camera/mic permissions for the best experience:
           </ThemedText>
-        </ThemedView>
-        <ThemedView style={styles.stepContainer}>
-          <ThemedText type="subtitle">Camera Permissions</ThemedText>
-          <ThemedText>🎥 For taking pictures and videos</ThemedText>
-        </ThemedView>
-        <ThemedView style={styles.stepContainer}>
-          <ThemedText type="subtitle">Microphone Permissions</ThemedText>
-          <ThemedText>🎙️ For taking videos with audio</ThemedText>
-        </ThemedView>
-        <ThemedView style={styles.stepContainer}>
-          <ThemedText type="subtitle">Media Library Permissions</ThemedText>
-          <ThemedText>📸 To save/view your amazing shots</ThemedText>
         </ThemedView>
         <Button title="Continue" onPress={handleContinue} />
       </ParallaxScrollView>
     );
-
-  async function toggleRecord() {
-    if (isRecording) {
-      await cameraRef.current?.stopRecording();
-      setIsRecording(false);
-    } else {
-      setIsRecording(true);
-      const video = cameraRef.current?.startRecording({
-        onRecordingFinished: (video) => { setVideo(video.path); console.log(video.path); },
-        onRecordingError: (error) => console.error(error),
-      });
-    }
   }
 
-  // Show ComingSoonPage if the user has posted today
-  if (hasPostedToday) {
-    return <ComingSoonPage text="You've already posted today. Come back tmrw to post again!" />;
+  // If user has recorded a video => show preview
+  if (video) {
+    return <VideoViewComponent video={video} setVideo={setVideo} />;
   }
 
-  if (device == null) return <></>;
-  if (video) return <VideoViewComponent video={video} setVideo={setVideo} />;
-  
+  /** 10) Render the main camera UI, no single-post limit **/
   return (
-    <View style={{ flex: 1 }}>
-      {timeLeft !== null ? (
-        <SafeAreaView style={{position: "absolute",
-          alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
+    <TouchableWithoutFeedback onPress={handleTap}>
+      <View style={{ flex: 1 }}>
+        {/* Firestore “timeLeftDb” countdown or status */}
+        <SafeAreaView
+          style={{
+            position: "absolute",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
             zIndex: 4,
-         }}>
-          <ThemedText type="subtitle">Time Left: {formatTimeLeft(timeLeft)}</ThemedText>
-        </SafeAreaView>
-        ) : (
-          <SafeAreaView style={{position: "absolute",
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '100%',
-            zIndex: 4,
-           }}>
+          }}
+        >
+          {timeLeftDb !== null ? (
+            <ThemedText type="subtitle">
+              Time Left: {formatTimeLeft(timeLeftDb)}
+            </ThemedText>
+          ) : (
             <ThemedText type="subtitle">{postingStatus}</ThemedText>
-          </SafeAreaView>
+          )}
+          {/* Local 2-min countdown for fun */}
+          <ThemedText type="subtitle">{timeLeftForNotification}s</ThemedText>
+          {hasPostedToday && (
+            <Text style={{ color: "#fff", marginTop: 4 }}>
+              You’ve already posted once today – but you can post again!
+            </Text>
+          )}
+        </SafeAreaView>
+
+        {/* Actual camera preview */}
+        <Camera
+          style={StyleSheet.absoluteFill}
+          device={device}
+          ref={cameraRef}
+          isActive={isActive}
+          enableZoomGesture
+          torch={cameraTorch ? "on" : "off"}
+          video
+          audio
+        />
+
+        {/* Pink ring for 30s record limit */}
+        <View style={styles.recordRingContainer}>
+          <View style={styles.svgWrapper}>
+            <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+              {/* Dim circle behind */}
+              <Circle
+                cx={center}
+                cy={center}
+                r={radius}
+                stroke="#ccc"
+                strokeOpacity={0.2}
+                strokeWidth={strokeWidth}
+                fill="transparent"
+              />
+              <AnimatedCircle
+                cx={center}
+                cy={center}
+                r={radius}
+                stroke="#ff3399"
+                strokeWidth={strokeWidth}
+                fill="transparent"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                transform={ringRotation}
+              />
+            </Svg>
+            {/* Record button in center */}
+            <TouchableOpacity
+              onPress={toggleRecord}
+              style={[
+                styles.innerButton,
+                isRecording && styles.innerButtonActive,
+              ]}
+            />
+          </View>
+        </View>
+
+        {/* Show ring countdown if desired */}
+        <View style={styles.ringTimerText}>
+          <ThemedText style={styles.timerText}>
+            {timeLeftForRecording}s
+          </ThemedText>
+        </View>
+
+        {/* Draggable text overlays */}
+        {textOverlays.map((item) => (
+          <DraggableTextItem
+            key={item.id}
+            id={item.id}
+            text={item.text}
+            onTextLongPress={handleLongPressText}
+            pan={item.pan}
+          />
+        ))}
+
+        {/* If user is editing text */}
+        {showInput && (
+          <View style={overlayStyles.inputContainer}>
+            <TextInput
+              placeholder="Share something?"
+              placeholderTextColor="#bbb"
+              style={overlayStyles.textInput}
+              value={tempText}
+              onChangeText={setTempText}
+              onSubmitEditing={handleDoneEditing}
+              autoFocus
+              autoCapitalize="none"
+            />
+            <TouchableOpacity
+              onPress={handleDoneEditing}
+              style={overlayStyles.doneButton}
+            >
+              <Text style={{ color: "#fff", fontWeight: "bold" }}>Done</Text>
+            </TouchableOpacity>
+          </View>
         )}
-      <Camera
-        style={StyleSheet.absoluteFill}
-        device={device}
-        ref={cameraRef}
-        isActive={isActive}
-        enableZoomGesture={true}
-        torch={cameraTorch ? "on" : "off"}
-        video={true}
-        audio={true}
-      />
-      <View style={styles.timerContainer}>
-        <ThemedText style={styles.timerText}>{timer}s</ThemedText>
+
+        {/* Torch toggle & camera flip (in CameraTools). The “T” icon for text. */}
+        <CameraTools
+          cameraTorch={cameraTorch}
+          setCameraFacing={setCameraFacing}
+          setCameraTorch={setCameraTorch}
+        />
+        <TouchableOpacity
+          style={[styles.textButton, { top: 190 }]}
+          onPress={handleAddText}
+        >
+          <Text style={{ color: "#fff", fontSize: 26, fontWeight: "bold" }}>
+            T
+          </Text>
+        </TouchableOpacity>
       </View>
-      <CameraTools
-        cameraTorch={cameraTorch}
-        setCameraFacing={setCameraFacing}
-        setCameraTorch={setCameraTorch}
-      />
-      <CameraButton 
-        isRecording={isRecording}
-        handleTakePicture={toggleRecord}
-        cameraMode={"video"}
-      />
-    </View>
+    </TouchableWithoutFeedback>
   );
 }
 
+/** Main styles + ring styling */
 const styles = StyleSheet.create({
-  timerContainer: {
+  recordRingContainer: {
+    position: "absolute",
+    bottom: 60,
+    alignSelf: "center",
+    zIndex: 12,
+  },
+  svgWrapper: {
+    width: 100,
+    height: 100,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  innerButton: {
+    position: "absolute",
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: "#fff",
+  },
+  innerButtonActive: {
+    backgroundColor: "#ffd1e6",
+  },
+  ringTimerText: {
     position: "absolute",
     top: "10%",
     left: "50%",
     transform: [{ translateX: -25 }],
     zIndex: 10,
     backgroundColor: "rgba(0,0,0,0.5)",
-    padding: 10,
-    borderRadius: 10,
+    padding: 5,
+    borderRadius: 8,
   },
   timerText: {
     color: "#fff",
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: "bold",
+  },
+  textButton: {
+    position: "absolute",
+    right: 20,
+    zIndex: 999,
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 8,
   },
   logo: {
     width: "20%",
@@ -396,13 +668,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    marginLeft: '2%',
-    marginTop: '3%',
+    marginLeft: "2%",
+    marginTop: "3%",
   },
   stepContainer: {
     gap: 8,
     marginBottom: 8,
-    marginLeft: '2%',
+    marginLeft: "2%",
   },
   reactLogo: {
     height: 178,
@@ -410,5 +682,50 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     position: "absolute",
+  },
+});
+
+/** Overlays (input & bubble) */
+const overlayStyles = StyleSheet.create({
+  inputContainer: {
+    position: "absolute",
+    top: 140,
+    right: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#222",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    zIndex: 30,
+  },
+  textInput: {
+    minWidth: 160,
+    color: "#fff",
+    padding: 4,
+    marginRight: 8,
+  },
+  doneButton: {
+    backgroundColor: "#ff3399",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 5,
+  },
+  textBubble: {
+    position: "absolute",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: "#ff3399",
+    shadowColor: "#ff60d7",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    zIndex: 25,
+  },
+  textBubbleText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
   },
 });

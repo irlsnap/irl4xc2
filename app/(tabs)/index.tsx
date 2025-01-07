@@ -1,308 +1,527 @@
-import { View, Dimensions, FlatList, StyleSheet, Pressable, Image, Text, TouchableOpacity } from 'react-native';
-import { Video, ResizeMode, Audio } from 'expo-av';
-import React, { useEffect, useRef, useState } from 'react';
-import Carousel from 'react-native-reanimated-carousel';
-import ComingSoonPage from '../misc/comingsoon';
-import { arrayUnion, doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { auth, db } from '../firebaseConfig';
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { useFocusEffect } from '@react-navigation/native';
-import { router } from 'expo-router';
-import { useFonts } from 'expo-font';
-import { AnimatedEmoji } from 'react-native-animated-emoji';
-import EmojiPicker, { tr, type EmojiType } from 'rn-emoji-keyboard'
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
-import { Animated } from 'react-native';
-import { useRecentPicksPersistence } from 'rn-emoji-keyboard'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import Leaderboard from '../misc/leaderboard';
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useCallback,
+  useMemo,
+  memo,
+} from "react";
+import {
+  View,
+  Dimensions,
+  FlatList,
+  StyleSheet,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  Modal,
+  ActivityIndicator,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+} from "react-native";
+import { Image } from "expo-image"; // using expo-image for caching
+import { Video, ResizeMode, Audio } from "expo-av";
+import Carousel from "react-native-reanimated-carousel";
+import ComingSoonPage from "../misc/comingsoon";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import { auth, db } from "../firebaseConfig";
+import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
+import { useFocusEffect, useIsFocused } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import { useFonts } from "expo-font";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import Leaderboard from "../misc/leaderboard";
 
+const BOTTOM_NAV_HEIGHT = 80;
+const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 const Tab = createMaterialTopTabNavigator();
 
 export default function MyTabs() {
   let [fontsLoaded] = useFonts({
-    'Zoi-Regular': require('@/assets/fonts/Zoi-Regular.otf'),
+    "Zoi-Regular": require("@/assets/fonts/Zoi-Regular.otf"),
   });
 
-  if (fontsLoaded)
+  if (!fontsLoaded) return null;
+
   return (
     <Tab.Navigator
-      initialRouteName='friends'
+      initialRouteName="friends"
       screenOptions={{
-        tabBarActiveTintColor: '#fff',
-        tabBarIndicatorStyle: { backgroundColor: '#fff' },
-        tabBarIndicatorContainerStyle: { width: '70%', left: '5%' },
-        tabBarLabelStyle: { fontSize: 16, lineHeight: 24, fontFamily: 'Zoi-Regular' },
-        tabBarStyle: {
-          backgroundColor: 'transparent',
-          borderTopWidth: 0,
-          position: 'absolute',
-          top: '11%',
-          height: '5%',
-          width: '100%'
+        tabBarActiveTintColor: "#fff",
+        tabBarIndicatorStyle: { backgroundColor: "#fff" },
+        tabBarIndicatorContainerStyle: { width: "70%", left: "5%" },
+        tabBarLabelStyle: {
+          fontSize: 16,
+          lineHeight: 24,
+          fontFamily: "Zoi-Regular",
         },
-      }}>
+        tabBarStyle: {
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
+          position: "absolute",
+          top: "13%", // bring it down slightly
+          height: "5%",
+          width: "100%",
+        },
+      }}
+    >
       <Tab.Screen name="leaderboard" component={Leaderboard} />
       <Tab.Screen name="friends" component={FeedScreen} />
-      <Tab.Screen name="spotlight" component={ComingSoonPage} />
+      <Tab.Screen name="school" component={ComingSoonPage} />
     </Tab.Navigator>
   );
 }
 
+// ------------------------------------------------------------------
+
 function FeedScreen() {
-  const [userHasPost, setUserHasPost] = useState<boolean>(true); // Track if the current user has a post
+  const [userHasPost, setUserHasPost] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [videos, setVideos] = useState<Array<VideoItem>>([]);
+
+  // For controlling the Grid Modal
+  const [showGrid, setShowGrid] = useState<boolean>(false);
+  // We'll pre-mount the grid once feed is loaded, so it appears instantly.
+  const [gridMounted, setGridMounted] = useState<boolean>(false);
+
+  // For controlling which video the user is currently watching
+  const isFocused = useIsFocused();
+  const [currentViewableItemIndex, setCurrentViewableItemIndex] = useState(0);
+
+  // We'll store unsubscribes to Firestore so we can clean them up
+  const unsubscribeRefs = useRef<(() => void)[]>([]);
+
+  // We'll reference the main FlatList so we can programmatically scroll
+  const feedListRef = useRef<FlatList<any>>(null);
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       const fetchUser = async () => {
         const currentUser = auth.currentUser;
         if (!currentUser) return;
 
         try {
-          const userDoc = doc(db, 'users', currentUser.uid);
-          const userSnapshot = await getDoc(userDoc);
-          const userPost = userSnapshot.data()?.post || '';
-
-          if (!userPost) {
-            setUserHasPost(false); // If the user hasn't posted anything, set to false
-            return;
-          }
-
-          setUserHasPost(true); // The current user has posted something
-
+          const userDocRef = doc(db, "users", currentUser.uid);
+          const userSnapshot = await getDoc(userDocRef);
+          const userPost = userSnapshot.data()?.post || "";
+          setUserHasPost(Boolean(userPost));
         } catch (error) {
           console.error("Error fetching latest post:", error);
         }
       };
-  
       fetchUser();
-  
-      return () => {
-        // isActive = false;
-      };
-    }, [userHasPost])
+    }, [])
   );
 
   useEffect(() => {
+    // Allow audio in silent mode on iOS
     Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
-    fetchFriendVideos(); // Fetch the videos of friends when component mounts
+    fetchFriendVideos();
+
+    return () => {
+      // Cleanup friend listeners
+      unsubscribeRefs.current.forEach((unsub) => unsub());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Once feed loads and we have videos, mount the grid so it's ready
+  useEffect(() => {
+    if (!isLoading && videos.length > 0) {
+      setGridMounted(true);
+    }
+  }, [isLoading, videos]);
 
   const fetchFriendVideos = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
-  
+
     try {
-      const userDoc = doc(db, 'users', currentUser.uid);
-  
-      // Real-time listener for user changes
-      const unsubscribe = onSnapshot(userDoc, (userSnapshot) => {
-        const userPost = userSnapshot.data()?.post || '';
-  
+      const userDocRef = doc(db, "users", currentUser.uid);
+      const unsubscribe = onSnapshot(userDocRef, async (userSnapshot) => {
+        const userData = userSnapshot.data() || {};
+        const userPost = userData.post || "";
         if (!userPost) {
           setUserHasPost(false);
+          setVideos([]);
+          setIsLoading(false);
           return;
         }
-  
         setUserHasPost(true);
-  
-        const friends = userSnapshot.data()?.friends || {};
-  
-        // Filter friends who are accepted
-        const friendUIDs = Object.keys(friends).filter((uid) => friends[uid] === true);
-  
-        const allVideos: { uid: string; post: string; name: string; pfp: string, reactions: string[], emojis: string[], emojiUids: string[]}[] = [];
-  
-        // Add the current user's video to the feed first
-        allVideos.push({
+
+        const friends = userData.friends || {};
+        const friendUIDs = Object.keys(friends).filter((uid) => friends[uid]);
+
+        // We'll collect everyone's video data in a map
+        const allVideosMap = new Map<string, VideoItem>();
+
+        // Clear old unsubscribers
+        unsubscribeRefs.current.forEach((unsub) => unsub());
+        unsubscribeRefs.current = [];
+
+        // 1) Grab current user's video info
+        allVideosMap.set(currentUser.uid, {
           uid: currentUser.uid,
-          post: userPost,
-          name: userSnapshot.data()?.fname + " " + userSnapshot.data()?.lname || 'Me',
-          pfp: userSnapshot.data()?.pfp || '',
-          reactions: userSnapshot.data()?.reactions || [],
-          emojis: userSnapshot.data()?.emojis || [],
-          emojiUids: userSnapshot.data()?.emojiUids || []
+          post: userPost, // HLS .m3u8
+          username: userData.username || "Me",
+          thumbnail: userData.thumbnail || "",
+          pfp: userData.pfp || "",
+          reactions: userData.reactions || [],
         });
-  
-        // Fetch posts (videos) from friends
+
+        // 2) For each friend
         if (friendUIDs.length > 0) {
-          friendUIDs.forEach(async (uid) => {
-            const friendDoc = doc(db, 'users', uid);
-  
-            onSnapshot(friendDoc, (friendSnapshot) => {
-              const friendPosts = friendSnapshot.data()?.post || '';
-              const friendName = friendSnapshot.data()?.fname + " " + friendSnapshot.data()?.lname || 'Unknown';
-              const friendPfp = friendSnapshot.data()?.pfp || '';
-              const friendEmojis = friendSnapshot.data()?.emojis || [];
-              const friendEmojiUids = friendSnapshot.data()?.emojiUids || [];
-              const friendReactions = friendSnapshot.data()?.reactions || [];
-              const filteredReactions = friendReactions.filter((reaction: string) => reaction !== '');
-  
-              if (friendPosts) {
-                const updatedFriendData = {
-                  uid,
-                  post: friendPosts,
-                  name: friendName,
-                  pfp: friendPfp,
-                  reactions: [...filteredReactions, "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9"], // Add the hardcoded video for friends
-                  emojis: friendEmojis,
-                  emojiUids: friendEmojiUids
-                };
-  
-                allVideos.push(updatedFriendData);
-                setVideos([...allVideos]); // Set the videos state
+          friendUIDs.forEach((uid) => {
+            const friendDocRef = doc(db, "users", uid);
+            const friendUnsub = onSnapshot(friendDocRef, async (snap) => {
+              const friendData = snap.data() || {};
+              const friendPosts = friendData.post || "";
+              if (!friendPosts) {
+                // remove if they have no post
+                if (allVideosMap.has(uid)) {
+                  allVideosMap.delete(uid);
+                  updateVideoState([...allVideosMap.values()]);
+                }
+                setIsLoading(false);
+                return;
               }
+
+              const friendUsername = friendData.username || "Unknown";
+              const friendPfp = friendData.pfp || "";
+              const friendReactions = friendData.reactions || [];
+
+              // add the secret "click" reaction
+              const filteredReactions = [
+                ...friendReactions.filter((r: string) => r !== ""),
+                "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9",
+              ];
+
+              allVideosMap.set(uid, {
+                uid,
+                post: friendPosts,
+                username: friendUsername,
+                thumbnail: friendData.thumbnail || "",
+                pfp: friendPfp,
+                reactions: filteredReactions,
+              });
+
+              updateVideoState([...allVideosMap.values()]);
+              setIsLoading(false);
             });
+            unsubscribeRefs.current.push(friendUnsub);
           });
         } else {
-          setVideos([...allVideos]); // Set only the user's video if no friends
+          // no friends
+          updateVideoState([...allVideosMap.values()]);
+          setIsLoading(false);
         }
       });
-  
-      return () => unsubscribe();
-  
+      unsubscribeRefs.current.push(unsubscribe);
     } catch (error) {
-      console.error('Error fetching friend videos:', error);
+      console.error("Error fetching friend videos:", error);
+      setIsLoading(false);
     }
-  };  
+  };
 
-  const [videos, setVideos] = useState<{ uid: string; post: string; name: string; pfp: string; reactions: string[], emojis: string[], emojiUids: string[] }[]>([]);
+  // Sort + set videos
+  const updateVideoState = useCallback((videosArr: VideoItem[]) => {
+    // Sort by reaction count (excluding the “click.mp4” placeholder)
+    videosArr.sort((a, b) => {
+      const aCount = a.reactions.filter((r) => !r.includes("click.mp4")).length;
+      const bCount = b.reactions.filter((r) => !r.includes("click.mp4")).length;
+      return bCount - aCount;
+    });
+    setVideos(videosArr);
+  }, []);
 
-  const [currentViewableItemIndex, setCurrentViewableItemIndex] = useState(0);
-  const viewabilityConfig = { viewAreaCoveragePercentThreshold: 50 }
-  const onViewableItemsChanged = ({ viewableItems }: any) => {
+  const viewabilityConfig = useMemo(
+    () => ({ viewAreaCoveragePercentThreshold: 50 }),
+    []
+  );
+
+  const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0) {
       setCurrentViewableItemIndex(viewableItems[0].index ?? 0);
     }
-  }
-  const viewabilityConfigCallbackPairs = useRef([{ viewabilityConfig, onViewableItemsChanged }])
+  }, []);
 
-  // If user hasn't posted anything, show the ComingSoonPage
+  const viewabilityConfigCallbackPairs = useRef([
+    { viewabilityConfig, onViewableItemsChanged },
+  ]);
+
+  // Detect “pull-down” beyond a threshold to open grid
+  const handleScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = e.nativeEvent.contentOffset.y;
+      // If user pulls down ~80px beyond the top, show the grid
+      if (offsetY < -80 && !showGrid) {
+        setShowGrid(true);
+      }
+    },
+    [showGrid]
+  );
+
+  // Jump to a given video index from the grid
+  const jumpToVideo = useCallback(
+    (index: number) => {
+      // 1) Validate index
+      if (index < 0 || index >= videos.length) return;
+
+      // 2) Hide grid
+      setShowGrid(false);
+
+      // 3) Try scrolling
+      requestAnimationFrame(() => {
+        try {
+          feedListRef.current?.scrollToIndex({ index, animated: false });
+          setCurrentViewableItemIndex(index);
+        } catch (err) {
+          console.warn("scrollToIndex error:", err);
+        }
+      });
+    },
+    [videos.length]
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: VideoItem; index: number }) => {
+      return (
+        <Item
+          item={item}
+          index={index}
+          shouldPlay={isFocused && index === currentViewableItemIndex}
+          totalVideos={videos.length}
+        />
+      );
+    },
+    [isFocused, currentViewableItemIndex, videos.length]
+  );
+
+  // If user hasn't posted yet, show a “go post!” page
   if (!userHasPost) {
     return <ComingSoonPage text="You haven't posted yet. Go Post!" />;
   }
 
+  // Spinner until the feed is loaded
+  if (isLoading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#fff" />
+      </View>
+    );
+  }
+
+  // If no videos at all
+  if (videos.length === 0) {
+    return <ComingSoonPage text="No Posts yet. Add more friends!" />;
+  }
+
   return (
     <View style={styles.container}>
+      {/* Logo in top-right corner */}
       <Image
-        source={require('@/assets/images/app_logo_transparent.png')}
+        source={require("@/assets/images/app_logo_transparent.png")}
         style={styles.logo}
       />
 
-      {videos.length > 0 ?
-        <FlatList
-          data={videos}
-          renderItem={({ item, index }) => (
-            <Item item={item} shouldPlay={index === currentViewableItemIndex} />
-          )}
-          keyExtractor={item => item.uid}
-          pagingEnabled
-          horizontal={false}
-          showsVerticalScrollIndicator={false}
-          viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
-          initialNumToRender={1}
-        /> : <ComingSoonPage text='No Posts yet. Add more friends!' />
-      }
+      <FlatList
+        ref={feedListRef}
+        data={videos}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.uid}
+        pagingEnabled
+        showsVerticalScrollIndicator={false}
+        viewabilityConfigCallbackPairs={viewabilityConfigCallbackPairs.current}
+        initialNumToRender={3}
+        windowSize={5}
+        maxToRenderPerBatch={5}
+        updateCellsBatchingPeriod={100}
+        snapToInterval={screenHeight - BOTTOM_NAV_HEIGHT}
+        decelerationRate="fast"
+        snapToAlignment="start"
+        disableIntervalMomentum
+        onScroll={handleScroll}
+        scrollEventThrottle={16}
+      />
 
+      {/* “Grid” overlay (BeReal-like calendar) */}
+      {gridMounted && (
+        <Modal visible={showGrid} animationType="none" transparent>
+          <View style={styles.gridModalOverlay}>
+            <View style={styles.gridContainer}>
+              <Text style={styles.gridTitle}>Grid View</Text>
+
+              <FlatList
+                data={videos}
+                keyExtractor={(item) => item.uid}
+                numColumns={3}
+                style={{ alignSelf: "stretch" }}
+                columnWrapperStyle={{
+                  justifyContent: "flex-start",
+                  marginBottom: 10,
+                }}
+                renderItem={({ item, index }) => {
+                  return (
+                    <TouchableOpacity
+                      style={styles.gridItemBox}
+                      onPress={() => jumpToVideo(index)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={styles.gridItemBoxText}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.5}
+                      >
+                        {item.username}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+
+              {/* Close button */}
+              <TouchableOpacity
+                style={styles.gridCloseButton}
+                onPress={() => setShowGrid(false)}
+              >
+                <Ionicons name="close-outline" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
 
-const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, post: string; name: string; pfp: string; reactions: string[], emojis: string[], emojiUids: string[] } }) => {
-  const video = React.useRef<Video | null>(null);
-  const width = Dimensions.get('window').width;
+// ------------------------------------------------------------------
+
+type VideoItem = {
+  uid: string;
+  post: string; // HLS .m3u8 URL
+  username: string;
+  thumbnail: string;
+  pfp: string;
+  reactions: string[];
+};
+
+const Item = memo(function Item({
+  item,
+  index,
+  shouldPlay,
+  totalVideos,
+}: {
+  shouldPlay: boolean;
+  item: VideoItem;
+  index: number;
+  totalVideos: number;
+}) {
+  const video = useRef<Video | null>(null);
   const [status, setStatus] = useState<any>(null);
-  const [currentViewableMojiIndex, setCurrentViewableMojiIndex] = useState(0);
-  const [isOpen, setIsOpen] = React.useState<boolean>(false)
-  const [sendEmoji, setSendEmoji] = React.useState<boolean>(false)
-  const [showEmoji, setShowEmoji] = React.useState<boolean>(false)
-  const [emoji, setEmoji] = React.useState<string>("")
-  const [scaleValue] = useState(new Animated.Value(1));
+  const [showThumbnail, setShowThumbnail] = useState<boolean>(true);
 
-  const i = item;
+  const router = useRouter();
 
-  useRecentPicksPersistence({
-    initialization: () => AsyncStorage.getItem("emoji-saved").then((item) => JSON.parse(item || '[]')),
-    onStateChange: (next) => AsyncStorage.setItem("emoji-saved", JSON.stringify(next)),
-  })
+  // Navigate to the friend’s profile
+  const navigateToFriendProfile = useCallback(() => {
+    router.push({
+      pathname: "/misc/friendprofile",
+      params: { friendUid: item.uid },
+    });
+  }, [item.uid, router]);
 
+  // Single-tap on main video => toggle play/pause
+  const handleVideoPress = useCallback(() => {
+    if (status?.isPlaying) {
+      video.current?.pauseAsync();
+    } else {
+      video.current?.playAsync();
+    }
+  }, [status?.isPlaying]);
+
+  // Auto-play / pause logic
   useEffect(() => {
     if (!video.current) return;
-
     if (shouldPlay) {
-      video.current.playAsync()
+      video.current.playAsync();
+      // Optionally prefetch the next video if you want
+      prefetchNextVideo(index + 1, totalVideos);
     } else {
-      video.current.pauseAsync()
-      video.current.setPositionAsync(0)
+      video.current.pauseAsync();
+      video.current.setPositionAsync(0);
     }
-  }, [shouldPlay])
+  }, [shouldPlay]);
 
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scaleValue, {
-          toValue: 1.2,
-          duration: 500,
-          useNativeDriver: true
-        }),
-        Animated.timing(scaleValue, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true
-        })
-      ])
-    );
-
-    animation.start();
-
-    return () => animation.stop();
+  const onPlaybackStatusUpdate = useCallback((st: any) => {
+    setStatus(st);
   }, []);
 
-  useEffect(() => {
-    if (auth.currentUser) {
-      if (!item.emojiUids.includes(auth.currentUser.uid)) {
-        setShowEmoji(true)
-      }
-    }
+  const onReadyForDisplay = useCallback(() => {
+    setShowThumbnail(false);
   }, []);
 
-  const handlePick = async (emojiObject: EmojiType) => {
-    setShowEmoji(false)
-    setEmoji(emojiObject.emoji)
-    setSendEmoji(true)
-    await updateDoc(doc(db, "users", item.uid), {
-      emojis: arrayUnion(emojiObject.emoji), // Add to 'emojis' field (array)
-      emojiUids: arrayUnion(auth?.currentUser?.uid), // Add to 'emojis' field (array)
-    });
-    /* example emojiObject = {
-        "emoji": "❤️",
-        "name": "red heart",
-        "slug": "red_heart",
-        "unicode_version": "0.6",
-      }
-    */
-  }
+  const prefetchNextVideo = useCallback(
+    async (nextIndex: number, total: number) => {
+      // Optional: Preload the next HLS video in background
+      if (nextIndex >= total) return;
+      // ...
+    },
+    []
+  );
+
+  // Count “real” reaction videos (excluding "click.mp4")
+  const reactionCount = useMemo(() => {
+    return item.reactions.filter((r) => !r.includes("click.mp4")).length;
+  }, [item.reactions]);
 
   return (
     <View>
-      <Pressable onPress={() => status.isPlaying ? video.current?.pauseAsync() : video.current?.playAsync()}>
-
-        <View style={{ flex: 1, position: 'absolute', zIndex: 4, bottom: 0, marginLeft: "5%", marginBottom: "3%" }}>
-          <Carousel
-            snapEnabled
-            loop
-            width={width / 4}
-            height={width / 2.5}
-            scrollAnimationDuration={500}
-            onSnapToItem={(index) => setCurrentViewableMojiIndex(index)}
-            data={item.reactions}
-            renderItem={({ item, index }) => (
-              <RealMoji item={item} shouldPlay={index === currentViewableMojiIndex} friendUid={i.uid} />
+      {/* MAIN Pressable => toggles the main post video */}
+      <Pressable onPress={handleVideoPress}>
+        {/* Reaction carousel near bottom-left */}
+        <View style={styles.reactionCarouselContainer}>
+          <View style={styles.reactionCarouselWrapper}>
+            <Carousel
+              snapEnabled
+              loop
+              width={screenWidth / 3.5}
+              height={screenWidth / 2.3}
+              scrollAnimationDuration={500}
+              data={item.reactions}
+              renderItem={({ item: reactionItem }) => (
+                <RealMoji
+                  item={reactionItem}
+                  shouldPlay={false} // We'll handle toggling inside RealMoji
+                  friendUid={item.uid}
+                />
+              )}
+            />
+            {reactionCount > 0 && (
+              <View style={styles.reactionCountContainer}>
+                <Text style={styles.reactionCountText}>{reactionCount}</Text>
+              </View>
             )}
-          />
+          </View>
         </View>
 
+        {/* MAIN video container */}
         <View style={styles.videoContainer}>
+          {/* Show thumbnail until onReadyForDisplay triggers */}
+          {showThumbnail && item.thumbnail ? (
+            <Image
+              source={{ uri: item.thumbnail, cache: "force-cache" }}
+              style={styles.video}
+              contentFit="cover"
+              transition={300}
+            />
+          ) : null}
+
           <Video
             ref={video}
             source={{ uri: item.post }}
@@ -310,232 +529,277 @@ const Item = ({ item, shouldPlay }: { shouldPlay: boolean; item: { uid: string, 
             isLooping
             resizeMode={ResizeMode.COVER}
             useNativeControls={false}
-            onPlaybackStatusUpdate={status => setStatus(() => status)}
+            onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+            onReadyForDisplay={onReadyForDisplay}
+            automaticallyWaitsToMinimizeStalling={false}
           />
 
-          {showEmoji ? <Animated.View style={{ transform: [{ scale: scaleValue }], position: 'absolute',
-              bottom: "10%",
-              right: "2%",
-              flexDirection: 'row',
-              alignItems: 'center',
-              backgroundColor: 'transparent',
-              padding: 10,
-              borderRadius: 30,}}>
-              <FontAwesome6 name="heart-circle-plus" size={32} color="red" onPress={() => setIsOpen(true)}/>
-          </Animated.View>: null}
-          
-          {/* if current video playing */}
-          {shouldPlay ? item.emojis.map((emoji, index) => {
-            if (index > 10) {
-              return
-            }
-            let bt: number;
-            if (index < 5) {
-              bt = index*75 + 200
-            }
-            else {
-              bt = 600 - (index-5)*75
-            }
-
-            return (
-              <AnimatedEmoji
-                index={'emoji.key'} // index to identity emoji component
-                style={{ bottom: bt }} // start bottom position
-                name={emoji} // emoji name
-                size={30} // font size
-                duration={4000} // ms
-                // onAnimationCompleted={this.onAnimationCompleted} // completion handler
-              />
-            )}) : <View></View>}
-
-          <EmojiPicker onEmojiSelected={handlePick} open={isOpen} onClose={() => {setIsOpen(false)}} enableRecentlyUsed enableSearchBar theme={{
-            backdrop: '#16161888',
-            knob: 'red',
-            container: '#282829',
-            header: '#fff',
-            skinTonesContainer: '#252427',
-            category: {
-              icon: 'red',
-              iconActive: '#fff',
-              container: '#252427',
-              containerActive: 'red',
-            },
-            search: {
-              text: '#fff',
-              placeholder: '#fff'
-            }
-          }} 
-          categoryOrder={["recently_used", "smileys_emotion", "people_body", "animals_nature", "food_drink", "travel_places", "activities", "symbols", "flags" ,"search"]}
-          disabledCategories={["objects"]}/>
-
-          {sendEmoji ? <AnimatedEmoji
-            index={'emoji.key'} // index to identity emoji component
-            style={{ bottom: 500 }} // start bottom position
-            name={emoji} // emoji name
-            size={30} // font size
-            duration={4000} // ms
-            onAnimationCompleted={() => setSendEmoji(false)} // completion handler
-          /> : <View></View>}
-
-          {/* Profile Picture and Name */}
-          <TouchableOpacity style={styles.profileContainer} onPress={() => {
-            video.current?.pauseAsync();
-            router.push({
-              pathname: '/misc/friendprofile',
-              params: { friendUid: item.uid }, // Pass the friend's UID here
-            })}
-          }>
-            {item.pfp ? (
-              <Image source={{ uri: item.pfp }} style={styles.profileImage} />
-            ) : (
-              <View style={styles.defaultProfileIcon}>
-                <Text style={styles.defaultProfileText}>👤</Text>
+          {/* top row: user info (PROFILE PIC + USERNAME) */}
+          <TouchableOpacity
+            style={styles.topRowContainer}
+            onPress={navigateToFriendProfile}
+          >
+            <View style={styles.topLeftUserInfo}>
+              <View style={styles.topLeftPfpWrapper}>
+                {item.pfp ? (
+                  <Image
+                    source={{ uri: item.pfp, cache: "force-cache" }}
+                    style={styles.topLeftPfpImage}
+                    contentFit="cover"
+                    transition={300}
+                  />
+                ) : (
+                  <Ionicons
+                    name="person"
+                    size={18}
+                    color="#fff"
+                    style={styles.iconShadow}
+                  />
+                )}
               </View>
-            )}
-            <Text style={styles.profileName}>{item.name}</Text>
+              <Text style={styles.topLeftName}>{item.username}</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </Pressable>
     </View>
   );
-}
+});
 
-const RealMoji = ({ item, shouldPlay, friendUid }: { shouldPlay: boolean; item: string, friendUid: string }) => {
-  const emoji = React.useRef<Video | null>(null);
+// ------------------------------------------------------------------
 
-  const [emojisStatus, setEmojisStatus] = useState<any>(null);
+/** 
+ * RealMoji:
+ * Tapping on it checks if it's the special "click.mp4" => if so, open camera to record Reaction.
+ * If not, simply toggle play/pause on that reaction clip.
+ */
+const RealMoji = memo(function RealMoji({
+  item,
+  shouldPlay,
+  friendUid,
+}: {
+  shouldPlay: boolean;
+  item: string;
+  friendUid: string;
+}) {
+  const emojiRef = useRef<Video | null>(null);
+  const [emojiStatus, setEmojiStatus] = useState<any>(null);
+  const router = useRouter();
 
+  // Always start paused at the first frame
   useEffect(() => {
-    if (!emoji.current) return;
+    if (!emojiRef.current) return;
+    emojiRef.current.setPositionAsync(0);
+    emojiRef.current.pauseAsync();
+  }, []);
 
-    if (shouldPlay) {
-      emoji.current.setPositionAsync(0)
-      emoji.current.pauseAsync()
-    } else {
-      emoji.current.pauseAsync()
-      emoji.current.setPositionAsync(0)
-    }
-  }, [shouldPlay])
-
-  const handlePress = async () => {
-    const currentUserUid = auth.currentUser?.uid; // Get the current user's UID
+  const handlePress = useCallback(async () => {
+    const currentUserUid = auth.currentUser?.uid;
     if (!currentUserUid) {
       alert("You must be logged in to react.");
       return;
     }
-  
-    // Check if the item matches the specific video URL
-    if (item === 'https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9') {
-      // Fetch friend's data from Firestore
+
+    // If it's the special "click" reaction
+    if (item.includes("click.mp4")) {
       try {
-        const friendDoc = doc(db, 'users', friendUid); // Replace friendUid with the actual friend's UID you passed
-        const friendSnapshot = await getDoc(friendDoc);
-  
+        const friendDocRef = doc(db, "users", friendUid);
+        const friendSnapshot = await getDoc(friendDocRef);
         if (friendSnapshot.exists()) {
           const friendData = friendSnapshot.data();
-          const alreadyReacted = friendData?.reactionUids?.includes(currentUserUid); // Check if the current user UID is in the reactionUids
-  
+          const alreadyReacted = friendData?.reactionUids?.includes(
+            currentUserUid
+          );
           if (alreadyReacted) {
             alert("Already reacted to this video");
-            return; // Exit the function if the user has already reacted
+            return;
           }
-        } else {
-          console.error("Friend not found");
         }
-      } catch (error) {
-        console.error("Error fetching friend's data:", error);
+      } catch (err) {
+        console.error("Error checking friend's data:", err);
       }
-  
-      // If not reacted, navigate to the camera view
-      console.log('Trigger camera view');
+
+      // If not already reacted, open ReactionVideo camera
       router.push({
-        pathname: '/misc/reactionvideo',
-        params: { friendUid: friendUid }, // Pass the friend's UID here
+        pathname: "/misc/reactionvideo",
+        params: { friendUid },
       });
     } else {
-      emojisStatus.isPlaying ? emoji.current?.pauseAsync() : emoji.current?.playAsync();
+      // Otherwise, toggle play/pause on this RealMoji
+      if (emojiStatus?.isPlaying) {
+        emojiRef.current?.pauseAsync();
+      } else {
+        emojiRef.current?.playAsync();
+      }
     }
-  };  
+  }, [friendUid, item, emojiStatus]);
 
   return (
-    <View
-      style={{
-        flex: 1,
-        borderWidth: 1,
-        justifyContent: 'center',
-        borderRadius: 5,
-      }}
-    >
+    <View style={styles.reactionContainer}>
       <Pressable onPress={handlePress}>
         <Video
-          ref={emoji}
+          ref={emojiRef}
           source={{ uri: item }}
           style={styles.video}
           isLooping
           resizeMode={ResizeMode.COVER}
           useNativeControls={false}
-          onPlaybackStatusUpdate={emojisStatus => setEmojisStatus(() => emojisStatus)}
-          posterSource={require('@/assets/images/app_logo_transparent.png')}
+          onPlaybackStatusUpdate={(st) => setEmojiStatus(st)}
         />
       </Pressable>
     </View>
-  )
-}
+  );
+});
+
+// ------------------------------------------------------------------
+// STYLES
+// ------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   logo: {
-    width: '15%',
-    height: '15%',
+    width: "15%",
+    height: "15%",
     right: "5%",
-    position: 'absolute',
+    position: "absolute",
     zIndex: 2,
-    backgroundColor: 'transparent',
-    top: "2%"
+    backgroundColor: "transparent",
+    top: "2%",
   },
   container: {
     flex: 1,
+    backgroundColor: "#000",
   },
   videoContainer: {
-    width: Dimensions.get('window').width,
-    height: Dimensions.get('window').height - 75,
+    width: screenWidth,
+    height: screenHeight - BOTTOM_NAV_HEIGHT,
   },
   video: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
-  profileContainer: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    padding: 10,
-    borderRadius: 30,
+  reactionCarouselContainer: {
+    flex: 1,
+    position: "absolute",
+    zIndex: 4,
+    bottom: 30,
+    left: 20,
   },
-  profileImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
+  reactionCarouselWrapper: {
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 3,
+    borderColor: "#fff",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    position: "relative",
   },
-  defaultProfileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
+  reactionCountContainer: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#ff69b4",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
   },
-  defaultProfileText: {
-    color: '#fff',
+  reactionCountText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  reactionContainer: {
+    flex: 1,
+    justifyContent: "center",
+    borderRadius: 5,
+  },
+  iconShadow: {
+    textShadowColor: "#000",
+    textShadowOffset: { width: 0, height: 0.5 },
+    textShadowRadius: 2,
+  },
+  topRowContainer: {
+    position: "absolute",
+    top: "20%",
+    width: "100%",
+    paddingHorizontal: 20,
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    zIndex: 5,
+  },
+  topLeftUserInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  topLeftPfpWrapper: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 1.2,
+    borderColor: "#fff",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+    marginRight: 6,
+  },
+  topLeftPfpImage: {
+    width: 28,
+    height: 28,
+  },
+  topLeftName: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+    textShadowColor: "#000",
+    textShadowOffset: { width: 0, height: 0.5 },
+    textShadowRadius: 2,
+  },
+
+  // Grid modal
+  gridModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.85)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  gridContainer: {
+    width: "90%",
+    maxHeight: "80%",
+    backgroundColor: "#111",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingTop: 16,
+    paddingBottom: 16,
+    alignItems: "center",
+  },
+  gridTitle: {
+    color: "#fff",
     fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 10,
   },
-  profileName: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+  gridItemBox: {
+    width: (screenWidth * 0.9 - 40) / 3,
+    height: (screenWidth * 0.9 - 40) / 3,
+    borderRadius: 8,
+    backgroundColor: "#666",
+    marginBottom: 10,
+    marginRight: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 5,
+  },
+  gridItemBoxText: {
+    color: "#fff",
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  gridCloseButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    padding: 5,
   },
 });

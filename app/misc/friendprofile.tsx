@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
-import { Alert, Image, StyleSheet, View, TouchableOpacity, FlatList, ActivityIndicator, Modal, Linking } from "react-native";
+import {
+  Alert,
+  Image,
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  FlatList,
+  ActivityIndicator,
+  Modal,
+  Linking,
+} from "react-native";
+import { Video } from "expo-av"; // <-- using expo-av ("av-video")
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { db } from "../firebaseConfig";
 import { doc, getDoc } from "firebase/firestore";
 import { ThemedText } from "@/components/shared/ThemedText";
 import { ThemedView } from "@/components/shared/ThemedView";
-import VideoViewComponent from "@/components/video/ProfileVideoView";
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import VideoThumbnailComponent from "@/components/video/VideoThumbnailComponent";
-import Ionicons from '@expo/vector-icons/Ionicons';
 
 export default function FriendProfile() {
   const navigation = useNavigation();
@@ -27,7 +37,7 @@ export default function FriendProfile() {
     navigation.setOptions({ headerShown: false });
 
     async function fetchData() {
-      if (typeof friendUid == "string") {
+      if (typeof friendUid === "string") {
         const userRef = await getDoc(doc(db, "users", friendUid));
         const data = userRef.data();
         if (data) {
@@ -36,7 +46,7 @@ export default function FriendProfile() {
           setName(data.fname + " " + data.lname);
           setHandle(data.username);
           setImageURL(data.pfp);
-          // setVideos(data.videos); // Fetch the videos array
+          // setVideos(data.videos); // Uncomment if needed to load actual videos
         }
       }
     }
@@ -46,96 +56,154 @@ export default function FriendProfile() {
 
   // Render item for FlatList
   const renderItem = ({ item }: { item: string }) => (
-    <TouchableOpacity onPress={() => {setVideo(item); setModal(true)}} style={{marginBottom:'5%'}}>
+    <TouchableOpacity
+      onPress={() => {
+        setVideo(item);
+        setModal(true);
+      }}
+      style={{ marginBottom: "5%" }}
+    >
       <VideoThumbnailComponent videoUri={item} />
     </TouchableOpacity>
   );
 
   return (
     <ThemedView style={{ flex: 1 }}>
-      <ThemedView style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: -250, marginBottom: -200 }}>
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modal}
-        onRequestClose={() => {
-          setModal(!modal);
-        }}>
-          <VideoViewComponent video={video} setModal={setModal} />
-      </Modal>
-        <Ionicons name="caret-back" size={30} color="white" onPress={() => router.back()} style={styles.back} />
-        <ThemedView style={{ alignContent: 'center', width: '60%', marginTop: "5%" }}>
+      {/* Top Section */}
+      <ThemedView
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          marginTop: -250,
+          marginBottom: -200,
+        }}
+      >
+        {/* Modal for playing the selected video */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={modal}
+          onRequestClose={() => {
+            setModal(!modal);
+          }}
+        >
+          <View style={styles.modalContainer}>
+            <TouchableOpacity
+              style={styles.modalBackground}
+              onPress={() => setModal(false)}
+            />
+            <Video
+              source={{ uri: video }}
+              style={styles.videoPlayer}
+              useNativeControls
+              resizeMode="contain"
+            />
+          </View>
+        </Modal>
+
+        <Ionicons
+          name="caret-back"
+          size={30}
+          color="white"
+          onPress={() => router.back()}
+          style={styles.back}
+        />
+
+        <ThemedView style={{ alignContent: "center", width: "60%", marginTop: "5%" }}>
           <ThemedText type="title">{name}</ThemedText>
         </ThemedView>
 
         <Image
-          source={require('@/assets/images/app_logo_dark.png')}
+          source={require("@/assets/images/app_logo_dark.png")}
           style={styles.logo}
         />
       </ThemedView>
 
-      <ThemedView style={{ flex: 1, alignItems: 'center', top: 0 }}>
-        {downloadURL ? 
-            <View style={styles.imageContainer}>
-              {downloadURL && <Image source={{ uri: downloadURL }} style={styles.image} />}
-            </View> : null
-        }
+      {/* Bottom Section */}
+      <ThemedView style={{ flex: 1, alignItems: "center", top: 0 }}>
+        {downloadURL ? (
+          <View style={styles.imageContainer}>
+            {downloadURL && <Image source={{ uri: downloadURL }} style={styles.image} />}
+          </View>
+        ) : null}
 
-        <ThemedText style={styles.handle} type="subtitle">@{handle}</ThemedText>
+        <ThemedText style={styles.handle} type="subtitle">
+          @{handle}
+        </ThemedText>
 
-        {/* <ThemedText style={{marginTop:"15%", color: '#3797EF'}} type="title" onPress={() => Linking.openURL('http://google.com')}>Check out your past videos here!</ThemedText> */}
-        <ThemedText style={{marginTop:"15%"}} type="title">No Pinned Videos Yet</ThemedText>
-        {/* FlatList to display videos */}
-        {/* <FlatList
-          data={videos}
-          renderItem={renderItem}
-          keyExtractor={(index) => index.toString()}
-          contentContainerStyle={styles.videoList}
-          style={{width:'100%', marginLeft:"21%", marginTop:"5%"}}
-          ListEmptyComponent={<ActivityIndicator size="large" color="#fff" style={{marginTop: "15%", marginRight:"21%"}} />}
-          initialNumToRender={1}
-        /> */}
-        
+        {/* Example text, pinned videos placeholder, etc. */}
+        <ThemedText style={{ marginTop: "15%" }} type="title">
+          No Pinned Videos Yet
+        </ThemedText>
+
+        {/* FlatList to display videos (uncomment if you want to show them)
+          <FlatList
+            data={videos}
+            renderItem={renderItem}
+            keyExtractor={(item, index) => String(index)}
+            contentContainerStyle={styles.videoList}
+            style={{ width: "100%", marginLeft: "21%", marginTop: "5%" }}
+            ListEmptyComponent={
+              <ActivityIndicator
+                size="large"
+                color="#fff"
+                style={{ marginTop: "15%", marginRight: "21%" }}
+              />
+            }
+            initialNumToRender={1}
+          />
+        */}
       </ThemedView>
     </ThemedView>
   );
 }
 
 const styles = StyleSheet.create({
-  image: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+  back: {
+    left: "5%",
+    position: "absolute",
+  },
+  logo: {
+    width: "20%",
+    height: "20%",
+    right: 0,
+    position: "absolute",
   },
   imageContainer: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#D9D9D9',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#D9D9D9",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  image: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
   handle: {
-    marginTop: '5%',
-  },
-  logo: {
-    width: '20%',
-    height: '20%',
-    right: 0,
-    position: 'absolute',
-  },
-  back: {
-    left: "5%",
-    position: 'absolute',
+    marginTop: "5%",
   },
   videoList: {
     marginTop: 20,
   },
-  videoContainer: {
-    marginBottom: 20,
-    width: '90%',
-    height: 200,
-    justifyContent: 'center',
-    alignItems: 'center',
+  modalContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBackground: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  },
+  videoPlayer: {
+    width: "100%",
+    height: "50%",
   },
 });

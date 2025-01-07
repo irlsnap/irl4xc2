@@ -1,68 +1,129 @@
 import { Tabs, useNavigation } from 'expo-router';
-import React, { useEffect } from 'react';
-
-import { MaterialIcons } from '@expo/vector-icons';
-import { Octicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { Image } from 'expo-image';  // <-- use expo-image
+import { auth, db } from '../firebaseConfig';
+import { doc, getDoc } from 'firebase/firestore';
+import { View, StyleSheet } from 'react-native';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const navigation = useNavigation();
+  const [userPfp, setUserPfp] = useState<string | null>(null);
 
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
+  useEffect(() => {
+    const loadUserPfp = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data?.pfp) {
+            setUserPfp(data.pfp);
+          }
+        }
+      } catch (error) {
+        console.log('Error fetching user pfp:', error);
+      }
+    };
+    loadUserPfp();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
-        tabBarStyle: {backgroundColor: Colors.dark.background},
-        tabBarActiveBackgroundColor: Colors.dark.background,
-        tabBarInactiveBackgroundColor: Colors.dark.background,
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        tabBarLabel:() => {return null},
+        tabBarStyle: { backgroundColor: Colors.dark.background },
+        tabBarActiveTintColor: '#fff',
+        tabBarInactiveTintColor: '#fff',
+        tabBarLabel: () => null,
         headerShown: false,
-      }}>
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Octicons name='home' size={24} color={"#fff"} />
-            // <TabBarIcon name={focused ? 'home' : 'home-outline'} color={color} />
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
-        name="events"
+        name="chat"
         options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Octicons name='megaphone' size={24} color={"#fff"} />
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'videocam' : 'videocam-outline'}
+              size={28}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="post"
         options={{
-          tabBarIcon: ({ color, focused }) => (
-            <MaterialIcons name='add-to-photos' size={24} color={"#fff"} />
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'add-circle' : 'add-circle-outline'}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
       <Tabs.Screen
         name="search"
         options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Octicons name='search' size={24} color={"#fff"} />
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'search' : 'search-outline'}
+              size={24}
+              color={color}
+            />
           ),
         }}
       />
+
+      {/** Profile tab with expo-image for caching */}
       <Tabs.Screen
         name="profile"
         options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Octicons name='person' size={24} color={"#fff"} />
-          ),
+          tabBarIcon: ({ focused, color }) =>
+            userPfp ? (
+              <Image
+                source={{ uri: userPfp }}
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 12,
+                  borderWidth: focused ? 2 : 0,
+                  borderColor: color,
+                }}
+                // This tells expo-image to cache in memory and on disk:
+                cachePolicy="memory-disk"
+                // Optionally specify how the image is resized/clipped:
+                contentFit="cover"
+                // You can also provide a tiny placeholder or a local fallback image
+              />
+            ) : (
+              <Ionicons
+                name={focused ? 'person' : 'person-outline'}
+                size={24}
+                color={color}
+              />
+            ),
         }}
       />
     </Tabs>
