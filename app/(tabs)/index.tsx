@@ -23,7 +23,14 @@ import { Image } from "expo-image"; // using expo-image for caching
 import { Video, ResizeMode, Audio } from "expo-av";
 import Carousel from "react-native-reanimated-carousel";
 import ComingSoonPage from "../misc/comingsoon";
-import { doc, getDoc, onSnapshot } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  onSnapshot,
+  setDoc,
+  updateDoc,
+  arrayUnion,
+} from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
 import { useFocusEffect, useIsFocused } from "@react-navigation/native";
@@ -103,7 +110,16 @@ function FeedScreen() {
         try {
           const userDocRef = doc(db, "users", currentUser.uid);
           const userSnapshot = await getDoc(userDocRef);
-          const userPost = userSnapshot.data()?.post || "";
+          const userData = userSnapshot.data() || {};
+          const userPost = userData.post || "";
+
+          // DEBUG
+          console.log(
+            "DEBUG => Current user doc data:",
+            currentUser.uid,
+            userData
+          );
+
           setUserHasPost(Boolean(userPost));
         } catch (error) {
           console.error("Error fetching latest post:", error);
@@ -141,6 +157,14 @@ function FeedScreen() {
       const unsubscribe = onSnapshot(userDocRef, async (userSnapshot) => {
         const userData = userSnapshot.data() || {};
         const userPost = userData.post || "";
+
+        // DEBUG
+        console.log(
+          "DEBUG => userSnapshot for self (friends & post info):",
+          currentUser.uid,
+          userData
+        );
+
         if (!userPost) {
           setUserHasPost(false);
           setVideos([]);
@@ -150,7 +174,17 @@ function FeedScreen() {
         setUserHasPost(true);
 
         const friends = userData.friends || {};
+        // DEBUG
+        console.log(
+          "DEBUG => My friends object keys =>",
+          Object.keys(friends),
+          "   values =>",
+          friends
+        );
+
         const friendUIDs = Object.keys(friends).filter((uid) => friends[uid]);
+        // DEBUG
+        console.log("DEBUG => friendUIDs =>", friendUIDs);
 
         // We'll collect everyone's video data in a map
         const allVideosMap = new Map<string, VideoItem>();
@@ -176,9 +210,19 @@ function FeedScreen() {
             const friendUnsub = onSnapshot(friendDocRef, async (snap) => {
               const friendData = snap.data() || {};
               const friendPosts = friendData.post || "";
+
+              // DEBUG
+              console.log(
+                "DEBUG => OnSnapshot friend doc =>",
+                uid,
+                friendData
+              );
+
               if (!friendPosts) {
                 // remove if they have no post
                 if (allVideosMap.has(uid)) {
+                  // DEBUG
+                  console.log("DEBUG => friend has no post. Removing =>", uid);
                   allVideosMap.delete(uid);
                   updateVideoState([...allVideosMap.values()]);
                 }
@@ -190,9 +234,11 @@ function FeedScreen() {
               const friendPfp = friendData.pfp || "";
               const friendReactions = friendData.reactions || [];
 
-              // add the secret "click" reaction
+              // SAFELY FILTER REACTIONS: strings only, non-empty
               const filteredReactions = [
-                ...friendReactions.filter((r: string) => r !== ""),
+                ...friendReactions
+                  .filter((r: any) => typeof r === "string" && r !== "")
+                  .map((r: string) => r.trim()),
                 "https://firebasestorage.googleapis.com/v0/b/irl-app-3e412.appspot.com/o/click.mp4?alt=media&token=aac533fa-8ca3-4881-bb44-b4786c648ea9",
               ];
 
@@ -231,6 +277,17 @@ function FeedScreen() {
       const bCount = b.reactions.filter((r) => !r.includes("click.mp4")).length;
       return bCount - aCount;
     });
+
+    // DEBUG
+    console.log(
+      "DEBUG => updateVideoState => final videos array =>",
+      videosArr.map((v) => ({
+        uid: v.uid,
+        username: v.username,
+        post: v.post.slice(0, 50) + "...", // truncated for brevity
+      }))
+    );
+
     setVideos(videosArr);
   }, []);
 
@@ -568,7 +625,7 @@ const Item = memo(function Item({
 
 // ------------------------------------------------------------------
 
-/** 
+/**
  * RealMoji:
  * Tapping on it checks if it's the special "click.mp4" => if so, open camera to record Reaction.
  * If not, simply toggle play/pause on that reaction clip.
@@ -600,7 +657,7 @@ const RealMoji = memo(function RealMoji({
       return;
     }
 
-    // If it's the special "click" reaction
+    // If it's the special "click" reaction => record new reaction
     if (item.includes("click.mp4")) {
       try {
         const friendDocRef = doc(db, "users", friendUid);
@@ -615,15 +672,24 @@ const RealMoji = memo(function RealMoji({
             return;
           }
         }
-      } catch (err) {
-        console.error("Error checking friend's data:", err);
-      }
 
-      // If not already reacted, open ReactionVideo camera
-      router.push({
-        pathname: "/misc/reactionvideo",
-        params: { friendUid },
-      });
+        // Example of saving the fact that we reacted, WITHOUT overwriting 'post'
+        await setDoc(
+          doc(db, "users", friendUid),
+          {
+            reactionUids: arrayUnion(currentUserUid),
+          },
+          { merge: true }
+        );
+
+        // Then go to ReactionVideo camera flow...
+        router.push({
+          pathname: "/misc/reactionvideo",
+          params: { friendUid },
+        });
+      } catch (err) {
+        console.error("Error while reacting:", err);
+      }
     } else {
       // Otherwise, toggle play/pause on this RealMoji
       if (emojiStatus?.isPlaying) {
